@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
 
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView.settings.apply {
@@ -56,8 +56,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Serves bundled offline files from app/src/main/assets/www/
-        webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
+        // Serves bundled offline Vite dist/ files placed directly in app/src/main/assets/
+        webView.loadUrl("https://appassets.androidplatform.net/index.html")
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {

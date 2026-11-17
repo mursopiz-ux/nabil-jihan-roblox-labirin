@@ -22,14 +22,14 @@ jobs:
 
       - name: Install dependencies & build web game
         run: |
-          npm install --legacy-peer-deps
+          npm install --legacy-peer-deps --no-audit --no-fund
           npm run build
 
       - name: Bundle compiled game into Android assets
         run: |
-          rm -rf android/app/src/main/assets/www
-          mkdir -p android/app/src/main/assets/www
-          cp -r dist/* android/app/src/main/assets/www/
+          rm -rf android/app/src/main/assets/*
+          mkdir -p android/app/src/main/assets
+          cp -r dist/* android/app/src/main/assets/
           mkdir -p android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
           cp public/pwa-192x192.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
           cp public/pwa-512x512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
@@ -40,8 +40,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
+      - name: Setup Android SDK & accept licenses
         uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35 platform & build-tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -51,7 +56,7 @@ jobs:
       - name: Build Android APK
         working-directory: android
         run: |
-          gradle assembleDebug
+          gradle assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk ../NabilKayanaJihan-MazeAdventure.apk
 
       - name: Upload APK to GitHub Actions Artifacts
@@ -61,6 +66,7 @@ jobs:
           path: NabilKayanaJihan-MazeAdventure.apk
 
       - name: Publish direct .APK to GitHub Releases
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest

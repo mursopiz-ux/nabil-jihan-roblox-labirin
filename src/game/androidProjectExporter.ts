@@ -80,6 +80,7 @@ const ANDROID_MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
     <application
         android:allowBackup="true"
         android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.MazeAdventure">
@@ -133,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
 
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView.settings.apply {
@@ -156,8 +157,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Serves bundled offline files from app/src/main/assets/www/
-        webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
+        // Serves bundled offline files from app/src/main/assets/
+        webView.loadUrl("https://appassets.androidplatform.net/index.html")
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -222,12 +223,16 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v3
+      - name: Accept SDK licenses & install platform 35
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
       - name: Build Debug APK
         run: |
-          gradle assembleDebug
+          gradle assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk NabilKayanaJihan-MazeAdventure.apk
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -235,6 +240,7 @@ jobs:
           name: NabilKayanaJihan-MazeAdventure-APK
           path: NabilKayanaJihan-MazeAdventure.apk
       - name: Publish Direct .APK to GitHub Releases
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
@@ -254,7 +260,7 @@ const PLACEHOLDER_WWW_HTML = `<!doctype html>
 </head>
 <body style="background:#020617;color:#f8fafc;font-family:sans-serif;padding:24px;text-align:center;">
   <h1>Siapkan Bundle Offline</h1>
-  <p>Salin seluruh isi folder <code>dist/</code> dari hasil <code>npm run build</code> ke folder <code>app/src/main/assets/www/</code> sebelum membuild APK.</p>
+  <p>Salin seluruh isi folder <code>dist/</code> dari hasil <code>npm run build</code> ke folder <code>app/src/main/assets/</code> sebelum membuild APK.</p>
 </body>
 </html>
 `;
@@ -266,14 +272,14 @@ Proyek Android Kotlin offline (` + '`WebViewAssetLoader`' + `) untuk membungkus 
 ## Langkah Build File .APK
 
 ### Cara 1 — Build & Download .APK Langsung via GitHub Releases (Otomatis)
-1. Upload folder ini (atau seluruh repository game ini yang sudah memiliki \`.github/workflows/build-android-apk.yml\`) ke GitHub.
+1. Upload seluruh repository game ini (yang sudah memiliki \`.github/workflows/build-android-apk.yml\` & folder \`android/\`) ke GitHub.
 2. Buka tab **Actions → Build & Publish Android APK → Run workflow**.
 3. Setelah selesai, buka menu **Releases** di repository GitHub Anda → unduh file **NabilKayanaJihan-MazeAdventure.apk** langsung tanpa ekstrak ZIP!
-4. Jika mengunduh dari **Actions Artifacts** (yang berformat \`.zip\`), Anda dapat langsung mengekstrak file \`.apk\`-nya lewat menu **Download .APK → Ekstrak .APK dari .ZIP GitHub** di dalam game ini.
+4. Jika mengunduh dari **Actions Artifacts** (yang berformat \`.zip\`), Anda dapat langsung mengekstrak file \`.apk\`-nya lewat menu **Download .APK → Pilih File .ZIP GitHub → Ekstrak .APK** di dalam game ini.
 
 ### Cara 2 — Melalui Android Studio (Windows / Mac / Linux)
 1. Di folder proyek web utama, jalankan \`npm run build\`.
-2. Salin **seluruh isi folder \`dist/\`** ke dalam \`app/src/main/assets/www/\` pada proyek ini (ganti \`index.html\` placeholder).
+2. Salin **seluruh isi folder \`dist/\`** ke dalam \`app/src/main/assets/\` pada proyek ini (ganti \`index.html\` placeholder).
 3. Buka folder proyek Android ini di **Android Studio**, lalu klik **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
 4. File APK berada di \`app/build/outputs/apk/debug/app-debug.apk\`.
 `;
@@ -331,7 +337,7 @@ export async function downloadAndroidStudioProjectZip(): Promise<void> {
   );
   zip.file('app/src/main/res/values/strings.xml', STRINGS_XML);
   zip.file('app/src/main/res/values/themes.xml', THEMES_XML);
-  zip.file('app/src/main/assets/www/index.html', PLACEHOLDER_WWW_HTML);
+  zip.file('app/src/main/assets/index.html', PLACEHOLDER_WWW_HTML);
 
   try {
     const [icon192, icon512] = await Promise.all([

@@ -136,10 +136,15 @@ export async function buildAndDownloadAndroidApk(
       const joinedErrors = (job.errors || job.logs || []).join('\n');
       if (joinedErrors.includes('404') || joinedErrors.includes('403') || joinedErrors.includes('401')) {
         throw new Error(
-          `URL publik (${origin}) belum aktif atau membutuhkan login. Klik Share / Publish aplikasi ini terlebih dahulu, lalu coba Download .APK lagi.`
+          `URL publik (${origin}) belum aktif atau membutuhkan login. Klik Share / Publish aplikasi ini terlebih dahulu, atau jalankan build APK via GitHub Actions.`
         );
       }
-      throw new Error('Build APK gagal di layanan Bubblewrap CloudAPK.');
+      const lastErr = (job.errors && job.errors[job.errors.length - 1]) || '';
+      throw new Error(
+        lastErr
+          ? `Build APK gagal: ${lastErr.slice(0, 180)}`
+          : 'Build APK gagal di layanan Bubblewrap CloudAPK.'
+      );
     }
   }
 
