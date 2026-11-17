@@ -8,10 +8,14 @@ import {
   RotateCcw,
   Settings,
   Shirt,
+  Smartphone,
   Users,
+  WifiOff,
 } from 'lucide-react';
 import { CAMPAIGN_LEVEL_SPECS, CHARACTERS, getWorldById } from '../game/catalog';
 import { SaveData, ScreenName } from '../game/types';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { AndroidInstallModal } from './AndroidInstallModal';
 import { CharacterPreview3D } from './CharacterPreview3D';
 
 interface MainMenuProps {
@@ -27,6 +31,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onContinue,
   onNavigate,
 }) => {
+  const [showInstallModal, setShowInstallModal] = React.useState(false);
+  const { isStandalone, isOnline } = usePWAInstall();
   const activeChar = CHARACTERS[saveData.selectedCharacter];
   const lastWorld = getWorldById(saveData.lastWorld);
   const spec = CAMPAIGN_LEVEL_SPECS.find(
@@ -62,8 +68,24 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden text-right text-xs text-slate-300 sm:block">
+        <div className="flex items-center gap-2.5 sm:gap-4">
+          {!isOnline && (
+            <div className="flex items-center gap-1.5 rounded-xl border border-emerald-400/35 bg-emerald-950/70 px-3 py-1.5 text-xs font-semibold text-emerald-300 whitespace-nowrap">
+              <WifiOff className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Mode Offline</span>
+            </div>
+          )}
+          {!isStandalone && (
+            <button
+              type="button"
+              onClick={() => setShowInstallModal(true)}
+              className="flex items-center gap-1.5 rounded-2xl border border-emerald-400/40 bg-emerald-500/20 px-3.5 py-2 text-xs font-bold text-emerald-200 shadow-md transition-colors hover:bg-emerald-500/30 whitespace-nowrap sm:text-sm"
+            >
+              <Smartphone className="h-4 w-4 text-emerald-300" />
+              <span>Pasang Android / APK</span>
+            </button>
+          )}
+          <div className="hidden text-right text-xs text-slate-300 md:block">
             <div>Karakter Aktif</div>
             <div className="font-semibold text-white">{activeChar.name}</div>
           </div>
@@ -209,6 +231,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </div>
         </div>
       </div>
+      <AndroidInstallModal
+        open={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
     </div>
   );
 };

@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Lock,
   Shield,
+  Smartphone,
   Sparkles,
   Star,
   Swords,
@@ -36,6 +37,7 @@ import {
   WeaponId,
   WorldId,
 } from '../game/types';
+import { AndroidInstallModal } from './AndroidInstallModal';
 import { CharacterPreview3D } from './CharacterPreview3D';
 
 function ScreenShell({
@@ -657,6 +659,7 @@ export const SettingsScreen: React.FC<{
 }> = ({ saveData, onUpdateSettings, onNewGameConfirm, onBack }) => {
   const [confirmNewGame, setConfirmNewGame] = useState(false);
   const [showGodotDocs, setShowGodotDocs] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   return (
     <ScreenShell title="Pengaturan & Sistem" coins={saveData.coins} onBack={onBack}>
@@ -782,18 +785,25 @@ export const SettingsScreen: React.FC<{
                 Termasuk skrip A* EnemyAI, BossAI 3 Fase, MazeGenerator, &amp; UPDATE_REQUIREMENTS.md.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowInstallModal(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-emerald-400 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-300 whitespace-nowrap"
+              >
+                <Smartphone className="h-4 w-4" /> Pasang di Android / APK
+              </button>
               <button
                 type="button"
                 onClick={() => setShowGodotDocs((v) => !v)}
-                className="rounded-xl bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-700"
+                className="rounded-xl bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-700 whitespace-nowrap"
               >
                 {showGodotDocs ? 'Tutup Panduan' : 'Lihat Panduan'}
               </button>
               <button
                 type="button"
                 onClick={() => downloadGodotProjectZip()}
-                className="flex items-center gap-1.5 rounded-xl bg-sky-500 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400"
+                className="flex items-center gap-1.5 rounded-xl bg-sky-500 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400 whitespace-nowrap"
               >
                 <Download className="h-4 w-4" /> Unduh ZIP Godot 4.x
               </button>
@@ -874,6 +884,10 @@ export const SettingsScreen: React.FC<{
           </div>
         </div>
       )}
+      <AndroidInstallModal
+        open={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
     </ScreenShell>
   );
 };

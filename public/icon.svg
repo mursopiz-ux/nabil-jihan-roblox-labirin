@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fde047"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <rect x="26" y="26" width="460" height="460" rx="88" fill="none" stroke="#fbbf24" stroke-opacity="0.35" stroke-width="10"/>
+
+  <!-- Maze Frame & Corridors -->
+  <rect x="86" y="136" width="340" height="300" rx="34" fill="#1e293b" stroke="#38bdf8" stroke-width="12"/>
+  <path d="M136 186 H256 V256 H196 V336 H326 V226 H376" fill="none" stroke="#34d399" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M136 286 V386 H266" fill="none" stroke="#38bdf8" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.7"/>
+
+  <!-- Blocky Hero Dots (Nabil & Jihan) -->
+  <rect x="116" y="166" width="42" height="42" rx="10" fill="#92400e" stroke="#fde68a" stroke-width="5"/>
+  <rect x="354" y="344" width="42" height="42" rx="10" fill="#ec4899" stroke="#fbcfe8" stroke-width="5"/>
+
+  <!-- Crown Badge Top -->
+  <path d="M168 124 L190 64 L256 102 L322 64 L344 124 Z" fill="url(#gold)" stroke="#78350f" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="256" cy="286" r="24" fill="#fbbf24" stroke="#78350f" stroke-width="6"/>
+</svg>
