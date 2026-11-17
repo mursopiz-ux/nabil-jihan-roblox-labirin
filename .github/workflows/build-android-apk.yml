@@ -1,9 +1,10 @@
-name: Build & Publish Android APK
+name: Build & Auto-Deploy Android APK
 
 on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
 
 permissions:
   contents: write
@@ -67,15 +68,26 @@ jobs:
           name: NabilKayanaJihan-MazeAdventure-APK
           path: NabilKayanaJihan-MazeAdventure.apk
 
-      - name: Publish direct .APK to GitHub Releases
+      - name: Auto-Deploy Direct .APK to GitHub Releases
+        id: publish_release
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view apk-latest >/dev/null 2>&1; then
             gh release upload apk-latest NabilKayanaJihan-MazeAdventure.apk --clobber
+            gh release edit apk-latest --latest
           else
             gh release create apk-latest NabilKayanaJihan-MazeAdventure.apk \
+              --latest \
               --title "Nabil Kayana & Jihan: Maze Adventure (Android APK)" \
               --notes "Unduh file NabilKayanaJihan-MazeAdventure.apk langsung di Assets (tidak perlu ekstrak ZIP)."
           fi
+
+      - name: Write Direct APK Download Summary
+        run: |
+          echo "### Android APK Berhasil Dibangun" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Direct Download (.APK):** https://github.com/${{ github.repository }}/releases/latest/download/NabilKayanaJihan-MazeAdventure.apk" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Halaman Releases:** https://github.com/${{ github.repository }}/releases/tag/apk-latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Jika tautan Releases belum muncul, aktifkan **Settings → Actions → General → Workflow permissions → Read and write permissions**, atau unduh dari **Artifacts** di bagian bawah halaman ini." >> "$GITHUB_STEP_SUMMARY"

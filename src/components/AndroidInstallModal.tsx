@@ -5,10 +5,12 @@ import {
   Code2,
   Copy,
   Download,
+  ExternalLink,
   FileArchive,
   GitBranch,
   Loader2,
   Package,
+  RefreshCw,
   Smartphone,
   WifiOff,
   X,
@@ -25,9 +27,18 @@ import {
 import { downloadGodotProjectZip } from '../game/godotProjectExporter';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
+const GITHUB_REPO_STORAGE_KEY = 'nkj_github_repo_slug';
+
 interface AndroidInstallModalProps {
   open: boolean;
   onClose: () => void;
+}
+
+interface GitHubApkReleaseInfo {
+  downloadUrl: string;
+  sizeMb: string;
+  updatedAt: string;
+  fileName: string;
 }
 
 function resolveInitialPublicUrl(): string {
@@ -44,6 +55,15 @@ function resolveInitialPublicUrl(): string {
   return DEFAULT_PUBLIC_APP_URL;
 }
 
+function parseGitHubRepoSlug(input: string): string | null {
+  const cleaned = input.trim().replace(/\.git$/i, '').replace(/\/+$/, '');
+  if (!cleaned) return null;
+  const urlMatch = cleaned.match(/github\.com\/([^/\s]+\/[^/\s]+)/i);
+  if (urlMatch) return urlMatch[1];
+  const slugMatch = cleaned.match(/^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/);
+  return slugMatch ? slugMatch[1] : null;
+}
+
 export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, onClose }) => {
   const { canPromptInstall, isInstalled, isStandalone, isIOS, triggerInstall } = usePWAInstall();
   const [targetAppUrl, setTargetAppUrl] = useState<string>(resolveInitialPublicUrl);
@@ -52,6 +72,18 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, 
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [downloadedAndroidZip, setDownloadedAndroidZip] = useState(false);
   const [downloadedGodotZip, setDownloadedGodotZip] = useState(false);
+
+  const [repoInput, setRepoInput] = useState<string>(() => {
+    try {
+      return localStorage.getItem(GITHUB_REPO_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [checkingRelease, setCheckingRelease] = useState(false);
+  const [releaseInfo, setReleaseInfo] = useState<GitHubApkReleaseInfo | null>(null);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+
   const [zipExtractMsg, setZipExtractMsg] = useState<{
     ok: boolean;
     text: string;
@@ -60,6 +92,73 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, 
   const zipInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!open) return null;
+
+  const parsedSlug = parseGitHubRepoSlug(repoInput);
+  const directReleaseUrl = parsedSlug
+    ? `https://github.com/${parsedSlug}/releases/latest/download/NabilKayanaJihan-MazeAdventure.apk`
+    : null;
+  const actionsUrl = parsedSlug
+    ? `https://github.com/${parsedSlug}/actions/workflows/build-android-apk.yml`
+    : null;
+
+  const handleRepoChange = (val: string) => {
+    setRepoInput(val);
+    setReleaseInfo(null);
+    setReleaseError(null);
+    try {
+      localStorage.setItem(GITHUB_REPO_STORAGE_KEY, val);
+    } catch {
+      // Ignore storage quota issues
+    }
+  };
+
+  const handleCheckGitHubApk = async () => {
+    if (!parsedSlug) {
+      setReleaseError('Masukkan repository GitHub, contoh: username/nabil-jihan-maze');
+      return;
+    }
+    setCheckingRelease(true);
+    setReleaseError(null);
+    setReleaseInfo(null);
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${parsedSlug}/releases/tags/apk-latest`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error(
+            'Release apk-latest belum ada. Jalankan workflow "Build & Auto-Deploy Android APK" di tab Actions GitHub Anda terlebih dahulu.'
+          );
+        }
+        throw new Error(`Gagal memeriksa GitHub Releases (${res.status}).`);
+      }
+      const data = (await res.json()) as {
+        assets?: Array<{
+          name: string;
+          size: number;
+          updated_at: string;
+          browser_download_url: string;
+        }>;
+      };
+      const apkAsset = data.assets?.find((a) => a.name.toLowerCase().endsWith('.apk'));
+      if (!apkAsset) {
+        throw new Error('Release ditemukan, tetapi belum berisi berkas .apk.');
+      }
+      setReleaseInfo({
+        fileName: apkAsset.name,
+        downloadUrl: apkAsset.browser_download_url,
+        sizeMb: (apkAsset.size / (1024 * 1024)).toFixed(2),
+        updatedAt: new Date(apkAsset.updated_at).toLocaleString('id-ID'),
+      });
+    } catch (err) {
+      setReleaseError(
+        err instanceof Error ? err.message : 'Gagal menghubungi GitHub Releases.'
+      );
+    } finally {
+      setCheckingRelease(false);
+    }
+  };
 
   const handleBuildAndDownloadApk = async () => {
     if (isBuildingApk) return;
@@ -138,10 +237,10 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, 
             </div>
             <div>
               <h2 id="android-install-title" className="font-display text-xl font-bold text-white">
-                Download &amp; Ekstrak .APK Android
+                Auto-Deploy &amp; Download .APK Android
               </h2>
               <p className="text-xs text-slate-400">
-                Compile .APK langsung, ekstrak .APK dari ZIP GitHub, atau pasang offline PWA
+                Unduh .APK otomatis dari GitHub Releases, ekstrak ZIP Actions, atau compile CloudAPK
               </p>
             </div>
           </div>
@@ -156,71 +255,140 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, 
         </div>
 
         <div className="mt-4 space-y-4">
-          {/* Section 1: GitHub Releases & Extract .APK from GitHub Actions .ZIP */}
+          {/* Section 1: GitHub Auto-Deploy .APK Direct Downloader & ZIP Extractor */}
           <div className="rounded-2xl border border-violet-400/35 bg-violet-950/25 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-violet-300" />
                 <h3 className="font-display text-base font-bold text-violet-200">
-                  1. Ekstrak &amp; Download .APK dari GitHub
+                  1. Auto-Deploy &amp; Download .APK dari GitHub
                 </h3>
               </div>
               <span className="font-mono text-[11px] text-violet-200/80">
-                .github/workflows/build-android-apk.yml
+                tag: apk-latest
               </span>
             </div>
 
-            <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-300">
-              <p>
-                Proyek ini sudah memiliki workflow GitHub Actions yang otomatis mem-build{' '}
-                <code className="text-amber-200">NabilKayanaJihan-MazeAdventure.apk</code> dan
-                mengunggahnya langsung ke menu <strong>GitHub Releases</strong> (bisa diunduh langsung sebagai <code>.apk</code> tanpa ZIP).
-              </p>
-              <p className="text-slate-400">
-                Jika Anda mengunduh artifact <code>.zip</code> dari tab <strong>GitHub Actions</strong>, pilih file ZIP tersebut di bawah untuk mengekstrak file <code>.apk</code>-nya secara instan:
-              </p>
-            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
+              Setiap push ke GitHub otomatis membangun dan merilis{' '}
+              <code className="text-amber-200">NabilKayanaJihan-MazeAdventure.apk</code> ke{' '}
+              <strong>GitHub Releases</strong>. Masukkan nama repo GitHub Anda untuk cek &amp; unduh langsung file <code className="text-amber-200">.apk</code>-nya:
+            </p>
 
-            <input
-              ref={zipInputRef}
-              type="file"
-              accept=".zip,application/zip"
-              onChange={handleExtractApkFromZip}
-              className="hidden"
-            />
+            <div className="mt-2.5 space-y-2.5">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  value={repoInput}
+                  onChange={(e) => handleRepoChange(e.target.value)}
+                  placeholder="username/nama-repo atau https://github.com/..."
+                  className="flex-1 rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-xs text-violet-200 focus:border-violet-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={checkingRelease}
+                  onClick={handleCheckGitHubApk}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-400 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-violet-300 disabled:opacity-70 whitespace-nowrap"
+                >
+                  {checkingRelease ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  <span>Cek .APK Terbaru</span>
+                </button>
+              </div>
 
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              {releaseInfo && (
+                <div className="rounded-xl border border-emerald-400/40 bg-emerald-950/35 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-emerald-200">{releaseInfo.fileName}</span>
+                    <span className="font-mono text-[11px] text-emerald-300">
+                      {releaseInfo.sizeMb} MB · {releaseInfo.updatedAt}
+                    </span>
+                  </div>
+                  <a
+                    href={releaseInfo.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={releaseInfo.fileName}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 font-display text-xs font-bold text-slate-950 hover:bg-emerald-300 whitespace-nowrap"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Download {releaseInfo.fileName} (.apk)</span>
+                  </a>
+                </div>
+              )}
+
+              {releaseError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-400/40 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  <span>{releaseError}</span>
+                </div>
+              )}
+
+              {parsedSlug && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <a
+                    href={directReleaseUrl || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 whitespace-nowrap"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Link Direct .APK Release</span>
+                  </a>
+                  <a
+                    href={actionsUrl || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 whitespace-nowrap"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Buka Actions Auto-Deploy</span>
+                  </a>
+                </div>
+              )}
+
+              <input
+                ref={zipInputRef}
+                type="file"
+                accept=".zip,application/zip"
+                onChange={handleExtractApkFromZip}
+                className="hidden"
+              />
+
               <button
                 type="button"
                 disabled={isExtractingZip}
                 onClick={() => zipInputRef.current?.click()}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-violet-400 px-4 py-2.5 font-display text-xs font-bold text-slate-950 hover:bg-violet-300 disabled:opacity-70 whitespace-nowrap"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-400/35 bg-violet-500/15 px-4 py-2 text-xs font-bold text-violet-200 hover:bg-violet-500/25 disabled:opacity-70 whitespace-nowrap"
               >
                 {isExtractingZip ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <FileArchive className="h-4 w-4" />
                 )}
-                <span>Pilih File .ZIP GitHub → Ekstrak .APK</span>
+                <span>Punya File .ZIP dari GitHub Actions? Ekstrak ke .APK</span>
               </button>
-            </div>
 
-            {zipExtractMsg && (
-              <div
-                className={`mt-2.5 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
-                  zipExtractMsg.ok
-                    ? 'border-emerald-400/40 bg-emerald-950/40 text-emerald-200'
-                    : 'border-rose-400/40 bg-rose-950/40 text-rose-200'
-                }`}
-              >
-                {zipExtractMsg.ok ? (
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-                ) : (
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                )}
-                <span>{zipExtractMsg.text}</span>
-              </div>
-            )}
+              {zipExtractMsg && (
+                <div
+                  className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
+                    zipExtractMsg.ok
+                      ? 'border-emerald-400/40 bg-emerald-950/40 text-emerald-200'
+                      : 'border-rose-400/40 bg-rose-950/40 text-rose-200'
+                  }`}
+                >
+                  {zipExtractMsg.ok ? (
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  )}
+                  <span>{zipExtractMsg.text}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Section 2: Direct Signed .APK Generator & Downloader */}
