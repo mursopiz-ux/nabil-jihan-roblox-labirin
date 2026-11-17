@@ -1,41 +1,76 @@
 import React, { useState } from 'react';
 import {
+  AlertCircle,
   Check,
   Code2,
   Copy,
   Download,
-  ExternalLink,
+  Loader2,
   Package,
   Smartphone,
   WifiOff,
   X,
 } from 'lucide-react';
 import { downloadAndroidStudioProjectZip } from '../game/androidProjectExporter';
+import {
+  ApkBuildProgress,
+  DEFAULT_PUBLIC_APP_URL,
+  buildAndDownloadAndroidApk,
+} from '../game/apkBuilder';
 import { downloadGodotProjectZip } from '../game/godotProjectExporter';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-
-const SHARED_PLAYABLE_URL =
-  'https://ais-pre-tnafvdkkdlarn5wo2kcxuy-1890515365.asia-east1.run.app';
 
 interface AndroidInstallModalProps {
   open: boolean;
   onClose: () => void;
 }
 
+function resolveInitialPublicUrl(): string {
+  if (typeof window !== 'undefined') {
+    const { origin, hostname } = window.location;
+    if (
+      origin.startsWith('https://') &&
+      !hostname.includes('ais-dev-') &&
+      hostname !== 'localhost'
+    ) {
+      return origin;
+    }
+  }
+  return DEFAULT_PUBLIC_APP_URL;
+}
+
 export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, onClose }) => {
   const { canPromptInstall, isInstalled, isStandalone, isIOS, triggerInstall } = usePWAInstall();
+  const [targetAppUrl, setTargetAppUrl] = useState<string>(resolveInitialPublicUrl);
+  const [apkProgress, setApkProgress] = useState<ApkBuildProgress | null>(null);
+  const [isBuildingApk, setIsBuildingApk] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [downloadedAndroidZip, setDownloadedAndroidZip] = useState(false);
   const [downloadedGodotZip, setDownloadedGodotZip] = useState(false);
 
   if (!open) return null;
 
-  const gameUrl = SHARED_PLAYABLE_URL;
-  const pwaBuilderUrl = `https://www.pwabuilder.com/reportcard?site=${encodeURIComponent(gameUrl)}`;
+  const handleBuildAndDownloadApk = async () => {
+    if (isBuildingApk) return;
+    setIsBuildingApk(true);
+    setApkProgress({ stage: 'checking', message: 'Menyiapkan build .APK...' });
+    try {
+      await buildAndDownloadAndroidApk(targetAppUrl, (progress) => {
+        setApkProgress(progress);
+      });
+    } catch (err) {
+      setApkProgress({
+        stage: 'error',
+        message: err instanceof Error ? err.message : 'Gagal membuat file .APK.',
+      });
+    } finally {
+      setIsBuildingApk(false);
+    }
+  };
 
   const handleCopyUrl = async () => {
     try {
-      await navigator.clipboard.writeText(gameUrl);
+      await navigator.clipboard.writeText(targetAppUrl);
       setCopiedUrl(true);
       window.setTimeout(() => setCopiedUrl(false), 2200);
     } catch {
@@ -70,17 +105,17 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, 
             </div>
             <div>
               <h2 id="android-install-title" className="font-display text-xl font-bold text-white">
-                Download Android &amp; Export APK
+                Download Format .APK Android
               </h2>
               <p className="text-xs text-slate-400">
-                Pasang aplikasi Android offline atau unduh proyek untuk membangun file .APK
+                Compile file .APK siap pasang, instal offline PWA, atau unduh proyek Android/Godot
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Tutup jendela Download Android & APK"
+            aria-label="Tutup jendela Download APK Android"
             className="rounded-xl border border-white/15 bg-slate-800 p-2 text-slate-300 hover:bg-slate-700 hover:text-white"
           >
             <X className="h-5 w-5" />
@@ -88,151 +123,166 @@ export const AndroidInstallModal: React.FC<AndroidInstallModalProps> = ({ open, 
         </div>
 
         <div className="mt-4 space-y-4">
-          {/* Option 1: Direct Android Offline App (PWA) */}
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/25 p-4">
+          {/* Section 1: Direct Signed .APK Generator & Downloader */}
+          <div className="rounded-2xl border border-amber-400/35 bg-amber-950/25 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-display text-base font-bold text-emerald-300">
-                1. Pasang Langsung di Android (Offline App)
-              </h3>
-              <span className="flex items-center gap-1 text-xs font-semibold text-emerald-200/80">
-                <WifiOff className="h-3.5 w-3.5" /> Bisa Offline
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-amber-300" />
+                <h3 className="font-display text-base font-bold text-amber-300">
+                  1. Buat &amp; Download File .APK Langsung
+                </h3>
+              </div>
+              <span className="font-mono text-[11px] text-amber-200/80">
+                NabilKayanaJihan-MazeAdventure.apk
               </span>
             </div>
 
             <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
-              Game ini sudah mendukung pemasangan langsung ke HP Android (PWA). Berjalan layar penuh
-              tanpa browser bar dan tetap bisa dimainkan tanpa internet.
+              Menggunakan layanan Bubblewrap CloudAPK untuk membungkus dan menandatangani game
+              menjadi file <code className="text-amber-200">.apk</code> asli. Pastikan URL publik di bawah sudah aktif (sudah di-Share/Publish).
             </p>
 
+            <div className="mt-3 space-y-2.5">
+              <label className="block text-[11px] font-semibold text-slate-300">
+                URL Publik Game (HTTPS):
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="url"
+                    value={targetAppUrl}
+                    onChange={(e) => setTargetAppUrl(e.target.value)}
+                    disabled={isBuildingApk}
+                    className="flex-1 rounded-xl border border-white/15 bg-slate-950 px-3 py-2 font-mono text-xs text-sky-300 focus:border-amber-400 focus:outline-none"
+                    placeholder="https://..."
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyUrl}
+                    className="flex items-center gap-1 rounded-xl border border-white/15 bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 whitespace-nowrap"
+                  >
+                    {copiedUrl ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>{copiedUrl ? 'Disalin' : 'Salin'}</span>
+                  </button>
+                </div>
+              </label>
+
+              <button
+                type="button"
+                disabled={isBuildingApk}
+                onClick={handleBuildAndDownloadApk}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 font-display text-sm font-bold text-slate-950 shadow-md transition-colors hover:bg-amber-300 disabled:cursor-wait disabled:opacity-75 whitespace-nowrap"
+              >
+                {isBuildingApk ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Sedang Membuild .APK (10–25 detik)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    <span>Download File .APK (.apk)</span>
+                  </>
+                )}
+              </button>
+
+              {apkProgress && (
+                <div
+                  className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs ${
+                    apkProgress.stage === 'error'
+                      ? 'border-rose-400/40 bg-rose-950/40 text-rose-200'
+                      : apkProgress.stage === 'done'
+                      ? 'border-emerald-400/40 bg-emerald-950/40 text-emerald-200'
+                      : 'border-sky-400/30 bg-slate-950/75 text-sky-200'
+                  }`}
+                >
+                  {apkProgress.stage === 'error' ? (
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                  ) : apkProgress.stage === 'done' ? (
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-400" />
+                  )}
+                  <span className="leading-relaxed">{apkProgress.message}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section 2: Direct Android Offline App (PWA) */}
+          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/25 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-base font-bold text-emerald-300">
+                2. Instal Langsung di Chrome Android (Offline)
+              </h3>
+              <span className="flex items-center gap-1 text-xs font-semibold text-emerald-200/80">
+                <WifiOff className="h-3.5 w-3.5" /> Tanpa Internet
+              </span>
+            </div>
+
             {isStandalone || isInstalled ? (
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-500/20 px-3.5 py-2.5 text-xs font-bold text-emerald-200">
+              <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-emerald-500/20 px-3.5 py-2.5 text-xs font-bold text-emerald-200">
                 <Check className="h-4 w-4 shrink-0" />
-                <span>Game sudah terpasang sebagai aplikasi di perangkat ini.</span>
+                <span>Game sudah terpasang di layar utama perangkat ini.</span>
               </div>
             ) : canPromptInstall ? (
               <button
                 type="button"
                 onClick={() => triggerInstall()}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 font-display text-sm font-bold text-slate-950 hover:bg-emerald-300 whitespace-nowrap"
+                className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 font-display text-sm font-bold text-slate-950 hover:bg-emerald-300 whitespace-nowrap"
               >
                 <Download className="h-4 w-4" />
-                <span>Pasang Aplikasi ke Android Sekarang</span>
+                <span>Pasang ke Layar Utama Sekarang</span>
               </button>
             ) : (
-              <div className="mt-3 space-y-2.5 rounded-xl bg-slate-950/70 p-3 text-xs text-slate-300">
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
                 {isIOS ? (
-                  <p>
-                    Di <strong>Safari iPhone/iPad</strong>: ketuk tombol <strong>Bagikan (Share)</strong> lalu pilih{' '}
+                  <>
+                    Di <strong>Safari iPhone/iPad</strong>: ketuk <strong>Bagikan (Share)</strong> →{' '}
                     <strong>Tambah ke Layar Utama</strong>.
-                  </p>
+                  </>
                 ) : (
-                  <ol className="list-inside list-decimal space-y-1">
-                    <li>
-                      Buka link di bawah lewat <strong>Google Chrome di HP Android</strong> (di luar pratinjau editor).
-                    </li>
-                    <li>
-                      Ketuk menu titik tiga <strong>(⋮)</strong> → <strong>Tambahkan ke layar utama</strong> / <strong>Instal aplikasi</strong>.
-                    </li>
-                  </ol>
+                  <>
+                    Buka URL game di <strong>Google Chrome HP Android</strong> → ketuk menu{' '}
+                    <strong>(⋮) → Tambahkan ke layar utama / Instal aplikasi</strong> untuk bermain layar penuh secara offline.
+                  </>
                 )}
-
-                <div className="flex flex-col gap-2 pt-1 sm:flex-row">
-                  <div className="flex-1 truncate rounded-lg border border-white/10 bg-slate-900 px-3 py-2 font-mono text-[11px] text-sky-300">
-                    {gameUrl}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyUrl}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-sky-500 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400 whitespace-nowrap"
-                  >
-                    {copiedUrl ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedUrl ? 'Link Disalin' : 'Salin Link'}</span>
-                  </button>
-                </div>
-              </div>
+              </p>
             )}
           </div>
 
-          {/* Option 2: Generate / Build Real .APK File */}
-          <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
+          {/* Section 3: Local Android Studio & Godot Source ZIP Downloads */}
+          <div className="rounded-2xl border border-white/15 bg-slate-950/60 p-4">
             <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-amber-300" />
-              <h3 className="font-display text-base font-bold text-amber-300">
-                2. Buat &amp; Unduh File .APK Asli
+              <Code2 className="h-4 w-4 text-sky-400" />
+              <h3 className="font-display text-base font-bold text-white">
+                3. Unduh Proyek Sumber Build .APK Lokal (.ZIP)
               </h3>
             </div>
-            <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
-              Server web ini tidak memiliki Android SDK / compiler untuk mengompilasi biner{' '}
-              <code className="text-amber-200">.apk</code> secara langsung. Gunakan salah satu paket di bawah untuk membuat{' '}
-              <code className="text-amber-200">.apk</code> siap pasang:
+            <p className="mt-1 text-xs text-slate-400">
+              Alternatif offline jika ingin mengompilasi sendiri lewat Android Studio, GitHub Actions, atau Godot 4.x:
             </p>
 
-            <div className="mt-3 space-y-2.5 text-xs text-slate-300">
-              {/* Cloud APK via PWABuilder */}
-              <div className="rounded-xl border border-white/10 bg-slate-950/65 p-3">
-                <div className="font-bold text-white">
-                  Opsi A: Buat .APK Instan via PWABuilder (Tanpa Install SDK)
-                </div>
-                <p className="mt-1 text-slate-400">
-                  Buka halaman PWABuilder yang sudah terisi link game ini, lalu pilih{' '}
-                  <strong>Package for Stores → Android</strong> untuk mengunduh file <code className="text-sky-300">.apk</code>.
-                </p>
-                <a
-                  href={pwaBuilderUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 font-display text-xs font-bold text-slate-950 hover:bg-sky-400 whitespace-nowrap"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span>Buka PWABuilder &amp; Paketkan .APK</span>
-                </a>
-              </div>
+            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleDownloadAndroidZip}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3.5 py-2.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 whitespace-nowrap"
+              >
+                {downloadedAndroidZip ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                <span>
+                  {downloadedAndroidZip ? 'Android Studio ZIP Diunduh' : 'Android Studio APK (.zip)'}
+                </span>
+              </button>
 
-              {/* Android Studio Gradle Kotlin WebView Project */}
-              <div className="rounded-xl border border-white/10 bg-slate-950/65 p-3">
-                <div className="font-bold text-white">
-                  Opsi B: Proyek Android Studio Kotlin + GitHub Actions (.ZIP)
-                </div>
-                <p className="mt-1 text-slate-400">
-                  Berisi <code className="text-emerald-300">MainActivity.kt</code> (WebViewAssetLoader offline),{' '}
-                  <code className="text-emerald-300">AndroidManifest.xml</code>, <code className="text-emerald-300">build.gradle.kts</code>, serta workflow GitHub Actions untuk compile <code className="text-amber-200">app-debug.apk</code>.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleDownloadAndroidZip}
-                  className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 font-display text-xs font-bold text-slate-950 hover:bg-emerald-300 whitespace-nowrap"
-                >
-                  {downloadedAndroidZip ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
-                  <span>
-                    {downloadedAndroidZip
-                      ? 'Proyek Android Studio (.ZIP) Diunduh'
-                      : 'Unduh Proyek Android Studio APK (.zip)'}
-                  </span>
-                </button>
-              </div>
-
-              {/* Godot 4.x Project */}
-              <div className="rounded-xl border border-white/10 bg-slate-950/65 p-3">
-                <div className="flex items-center gap-1.5 font-bold text-white">
-                  <Code2 className="h-4 w-4 text-amber-300" />
-                  <span>Opsi C: Proyek Godot 4.x GDScript (.ZIP)</span>
-                </div>
-                <p className="mt-1 text-slate-400">
-                  Buka di Godot Editor 4.x, lalu pilih <strong>Project → Export → Android → Export Project (.apk)</strong>.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleDownloadGodotZip}
-                  className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 font-display text-xs font-bold text-slate-950 hover:bg-amber-300 whitespace-nowrap"
-                >
-                  {downloadedGodotZip ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
-                  <span>
-                    {downloadedGodotZip
-                      ? 'ZIP Proyek Godot Berhasil Diunduh'
-                      : 'Unduh ZIP Proyek Godot 4.x (.zip)'}
-                  </span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleDownloadGodotZip}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-sky-400/35 bg-sky-500/15 px-3.5 py-2.5 text-xs font-bold text-sky-200 hover:bg-sky-500/25 whitespace-nowrap"
+              >
+                {downloadedGodotZip ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                <span>
+                  {downloadedGodotZip ? 'Godot 4.x ZIP Diunduh' : 'Godot 4.x GDScript (.zip)'}
+                </span>
+              </button>
             </div>
           </div>
         </div>

@@ -791,7 +791,7 @@ export const SettingsScreen: React.FC<{
                 onClick={() => setShowInstallModal(true)}
                 className="flex items-center gap-1.5 rounded-xl bg-emerald-400 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-300 whitespace-nowrap"
               >
-                <Smartphone className="h-4 w-4" /> Download Android / APK
+                <Smartphone className="h-4 w-4" /> Download .APK Android
               </button>
               <button
                 type="button"

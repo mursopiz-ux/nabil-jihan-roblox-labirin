@@ -81,7 +81,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             className="flex items-center gap-1.5 rounded-2xl border border-emerald-400/40 bg-emerald-500/20 px-3.5 py-2 text-xs font-bold text-emerald-200 shadow-md transition-colors hover:bg-emerald-500/30 whitespace-nowrap sm:text-sm"
           >
             <Smartphone className="h-4 w-4 text-emerald-300" />
-            <span>{isStandalone ? 'Export APK' : 'Download Android / APK'}</span>
+            <span>{isStandalone ? 'Export .APK' : 'Download .APK'}</span>
           </button>
           <div className="hidden text-right text-xs text-slate-300 md:block">
             <div>Karakter Aktif</div>
