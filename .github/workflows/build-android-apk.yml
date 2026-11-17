@@ -10,15 +10,15 @@ permissions:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: '24'
 
       - name: Install dependencies & build web game
         run: |
@@ -35,23 +35,25 @@ jobs:
           cp public/pwa-512x512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: 17
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Setup Android SDK & accept licenses
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 35 platform & build-tools
+      - name: Configure Android SDK 35 & accept licenses
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: 8.10.2
+          gradle-version: '8.10.2'
 
       - name: Build Android APK
         working-directory: android
@@ -60,19 +62,20 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ../NabilKayanaJihan-MazeAdventure.apk
 
       - name: Upload APK to GitHub Actions Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NabilKayanaJihan-MazeAdventure-APK
           path: NabilKayanaJihan-MazeAdventure.apk
 
       - name: Publish direct .APK to GitHub Releases
         continue-on-error: true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-latest
-          name: "Nabil Kayana & Jihan: Maze Adventure (Android APK)"
-          body: |
-            Unduh file **NabilKayanaJihan-MazeAdventure.apk** langsung di bagian **Assets** di bawah ini (tidak perlu ekstrak ZIP).
-          files: NabilKayanaJihan-MazeAdventure.apk
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view apk-latest >/dev/null 2>&1; then
+            gh release upload apk-latest NabilKayanaJihan-MazeAdventure.apk --clobber
+          else
+            gh release create apk-latest NabilKayanaJihan-MazeAdventure.apk \
+              --title "Nabil Kayana & Jihan: Maze Adventure (Android APK)" \
+              --notes "Unduh file NabilKayanaJihan-MazeAdventure.apk langsung di Assets (tidak perlu ekstrak ZIP)."
+          fi

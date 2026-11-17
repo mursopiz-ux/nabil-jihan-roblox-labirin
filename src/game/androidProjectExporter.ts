@@ -215,40 +215,44 @@ permissions:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: 17
-      - uses: android-actions/setup-android@v3
+          distribution: 'temurin'
+          java-version: '17'
       - name: Accept SDK licenses & install platform 35
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - uses: gradle/actions/setup-gradle@v4
+          SDK_ROOT="\${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=\$SDK_ROOT" >> "\$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=\$SDK_ROOT" >> "\$GITHUB_ENV"
+          yes | "\$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "\$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: 8.10.2
+          gradle-version: '8.10.2'
       - name: Build Debug APK
         run: |
           gradle assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk NabilKayanaJihan-MazeAdventure.apk
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NabilKayanaJihan-MazeAdventure-APK
           path: NabilKayanaJihan-MazeAdventure.apk
       - name: Publish Direct .APK to GitHub Releases
         continue-on-error: true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-latest
-          name: "Nabil Kayana & Jihan: Maze Adventure (Android APK)"
-          body: "Unduh file NabilKayanaJihan-MazeAdventure.apk langsung di Assets (tidak perlu ekstrak ZIP)."
-          files: NabilKayanaJihan-MazeAdventure.apk
         env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view apk-latest >/dev/null 2>&1; then
+            gh release upload apk-latest NabilKayanaJihan-MazeAdventure.apk --clobber
+          else
+            gh release create apk-latest NabilKayanaJihan-MazeAdventure.apk \\
+              --title "Nabil Kayana & Jihan: Maze Adventure (Android APK)" \\
+              --notes "Unduh file NabilKayanaJihan-MazeAdventure.apk langsung di Assets (tidak perlu ekstrak ZIP)."
+          fi
 `;
 
 const PLACEHOLDER_WWW_HTML = `<!doctype html>
