@@ -202,12 +202,15 @@ const PROGUARD_RULES = `-keepclassmembers class * {
 }
 `;
 
-const GITHUB_ACTIONS_YML = `name: Build Android APK
+const GITHUB_ACTIONS_YML = `name: Build & Publish Android APK
 
 on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+
+permissions:
+  contents: write
 
 jobs:
   build-apk:
@@ -218,16 +221,28 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: |
+          gradle assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk NabilKayanaJihan-MazeAdventure.apk
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nabil-jihan-maze-adventure-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: NabilKayanaJihan-MazeAdventure-APK
+          path: NabilKayanaJihan-MazeAdventure.apk
+      - name: Publish Direct .APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: "Nabil Kayana & Jihan: Maze Adventure (Android APK)"
+          body: "Unduh file NabilKayanaJihan-MazeAdventure.apk langsung di Assets (tidak perlu ekstrak ZIP)."
+          files: NabilKayanaJihan-MazeAdventure.apk
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 `;
 
 const PLACEHOLDER_WWW_HTML = `<!doctype html>
@@ -250,20 +265,53 @@ Proyek Android Kotlin offline (` + '`WebViewAssetLoader`' + `) untuk membungkus 
 
 ## Langkah Build File .APK
 
-### Cara 1 — Melalui Android Studio (Windows / Mac / Linux)
+### Cara 1 — Build & Download .APK Langsung via GitHub Releases (Otomatis)
+1. Upload folder ini (atau seluruh repository game ini yang sudah memiliki \`.github/workflows/build-android-apk.yml\`) ke GitHub.
+2. Buka tab **Actions → Build & Publish Android APK → Run workflow**.
+3. Setelah selesai, buka menu **Releases** di repository GitHub Anda → unduh file **NabilKayanaJihan-MazeAdventure.apk** langsung tanpa ekstrak ZIP!
+4. Jika mengunduh dari **Actions Artifacts** (yang berformat \`.zip\`), Anda dapat langsung mengekstrak file \`.apk\`-nya lewat menu **Download .APK → Ekstrak .APK dari .ZIP GitHub** di dalam game ini.
+
+### Cara 2 — Melalui Android Studio (Windows / Mac / Linux)
 1. Di folder proyek web utama, jalankan \`npm run build\`.
 2. Salin **seluruh isi folder \`dist/\`** ke dalam \`app/src/main/assets/www/\` pada proyek ini (ganti \`index.html\` placeholder).
-3. Buka folder proyek Android ini di **Android Studio**.
-4. Tunggu sinkronisasi Gradle selesai.
-5. Klik menu **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
-6. File APK siap pasang berada di:
-   \`app/build/outputs/apk/debug/app-debug.apk\`.
-
-### Cara 2 — Build Otomatis Tanpa Install Android Studio (GitHub Actions)
-1. Upload folder ini (termasuk isi \`dist/\` di \`app/src/main/assets/www/\`) ke repository GitHub.
-2. Buka tab **Actions → Build Android APK → Run workflow**.
-3. Unduh artifact **nabil-jihan-maze-adventure-apk** berisi \`app-debug.apk\`.
+3. Buka folder proyek Android ini di **Android Studio**, lalu klik **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+4. File APK berada di \`app/build/outputs/apk/debug/app-debug.apk\`.
 `;
+
+export async function extractApkFromZipFile(file: File): Promise<{ fileName: string; count: number }> {
+  const buffer = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(buffer);
+  const apkEntries = Object.values(zip.files).filter(
+    (entry) => !entry.dir && entry.name.toLowerCase().endsWith('.apk')
+  );
+
+  if (apkEntries.length === 0) {
+    throw new Error('Tidak ditemukan berkas .apk di dalam file ZIP tersebut.');
+  }
+
+  const chosen =
+    apkEntries.find((entry) => entry.name.toLowerCase().includes('signed')) ||
+    apkEntries.find((entry) => entry.name.toLowerCase().includes('release')) ||
+    apkEntries[0];
+
+  const apkData = await chosen.async('arraybuffer');
+  const apkBlob = new Blob([apkData], {
+    type: 'application/vnd.android.package-archive',
+  });
+  const baseName = chosen.name.split('/').pop() || 'NabilKayanaJihan-MazeAdventure.apk';
+  const outName = baseName.endsWith('.apk') ? baseName : `${baseName}.apk`;
+
+  const url = URL.createObjectURL(apkBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = outName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  return { fileName: outName, count: apkEntries.length };
+}
 
 export async function downloadAndroidStudioProjectZip(): Promise<void> {
   const zip = new JSZip();
@@ -284,6 +332,21 @@ export async function downloadAndroidStudioProjectZip(): Promise<void> {
   zip.file('app/src/main/res/values/strings.xml', STRINGS_XML);
   zip.file('app/src/main/res/values/themes.xml', THEMES_XML);
   zip.file('app/src/main/assets/www/index.html', PLACEHOLDER_WWW_HTML);
+
+  try {
+    const [icon192, icon512] = await Promise.all([
+      fetch('/pwa-192x192.png'),
+      fetch('/pwa-512x512.png'),
+    ]);
+    if (icon192.ok) {
+      zip.file('app/src/main/res/mipmap-xxhdpi/ic_launcher.png', await icon192.arrayBuffer());
+    }
+    if (icon512.ok) {
+      zip.file('app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', await icon512.arrayBuffer());
+    }
+  } catch {
+    // Non-fatal if offline without cached icon fetch
+  }
 
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
