@@ -125,6 +125,10 @@ function makeMonster(
     phase: 1,
     specialTimer: isBoss ? 2.4 : 3.2,
     leapVy: 0,
+    burnTimer: 0,
+    burnTickTimer: 0,
+    freezeTimer: 0,
+    shockTimer: 0,
     alive: true,
     animTime: 0,
   };

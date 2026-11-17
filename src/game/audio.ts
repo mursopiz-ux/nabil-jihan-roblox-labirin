@@ -76,6 +76,13 @@ class OfflineAudioEngine {
       | 'victory'
       | 'gameover'
       | 'click'
+      | 'fireball'
+      | 'lightning'
+      | 'ice'
+      | 'heal'
+      | 'shield'
+      | 'ko'
+      | 'respawn'
   ): void {
     const v = this.sfxVolume * 0.25;
     if (v <= 0.001) return;
@@ -125,9 +132,35 @@ class OfflineAudioEngine {
         this.playTone(1046, 0.35, 'sine', v * 1.1, undefined, 0.33);
         break;
       case 'gameover':
+      case 'ko':
         this.playTone(392, 0.16, 'triangle', v * 0.8, 349);
         this.playTone(349, 0.16, 'triangle', v * 0.8, 293, 0.16);
         this.playTone(261, 0.32, 'triangle', v * 0.8, 196, 0.32);
+        break;
+      case 'fireball':
+        this.playTone(320, 0.14, 'sawtooth', v * 0.85, 110);
+        this.playTone(540, 0.12, 'triangle', v * 0.6, 220, 0.05);
+        break;
+      case 'lightning':
+        this.playTone(1250, 0.07, 'square', v * 0.65, 420);
+        this.playTone(880, 0.12, 'sawtooth', v * 0.55, 240, 0.04);
+        break;
+      case 'ice':
+        this.playTone(1080, 0.1, 'sine', v * 0.75, 1480);
+        this.playTone(1480, 0.14, 'triangle', v * 0.65, 920, 0.06);
+        break;
+      case 'heal':
+        this.playTone(587, 0.1, 'sine', v * 0.8, 880);
+        this.playTone(880, 0.18, 'sine', v * 0.85, 1174, 0.08);
+        break;
+      case 'shield':
+        this.playTone(440, 0.12, 'triangle', v * 0.8, 660);
+        this.playTone(660, 0.18, 'sine', v * 0.8, 880, 0.08);
+        break;
+      case 'respawn':
+        this.playTone(440, 0.1, 'sine', v);
+        this.playTone(659, 0.12, 'sine', v, undefined, 0.09);
+        this.playTone(880, 0.22, 'triangle', v, undefined, 0.18);
         break;
     }
   }

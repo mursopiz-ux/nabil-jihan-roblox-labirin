@@ -1,18 +1,26 @@
 import React, { useRef, useState } from 'react';
-import { ArrowUp, Hand, Swords } from 'lucide-react';
+import { ArrowUp, Flame, Hand, Snowflake, Swords, Zap } from 'lucide-react';
+import { MAGIC_SPELLS } from '../game/catalog';
+import { MagicSpellId } from '../game/types';
 
 interface TouchControlsProps {
+  mp: number;
+  cooldowns: Record<MagicSpellId, number>;
   onMove: (x: number, z: number) => void;
   onJump: () => void;
   onAttack: () => void;
   onInteract: () => void;
+  onCastSpell: (spell: MagicSpellId) => void;
 }
 
 export const TouchControls: React.FC<TouchControlsProps> = ({
+  mp,
+  cooldowns,
   onMove,
   onJump,
   onAttack,
   onInteract,
+  onCastSpell,
 }) => {
   const baseRef = useRef<HTMLDivElement>(null);
   const pointerIdRef = useRef<number | null>(null);
@@ -42,8 +50,29 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     onMove(0, 0);
   };
 
+  const spells: { id: MagicSpellId; keyLabel: string; icon: React.ReactNode; activeCls: string }[] = [
+    {
+      id: 'fireball',
+      keyLabel: '1',
+      icon: <Flame className="h-4 w-4 text-orange-300" />,
+      activeCls: 'border-orange-400/75 bg-orange-950/85 hover:bg-orange-900',
+    },
+    {
+      id: 'lightning',
+      keyLabel: '2',
+      icon: <Zap className="h-4 w-4 text-sky-300" />,
+      activeCls: 'border-sky-400/75 bg-sky-950/85 hover:bg-sky-900',
+    },
+    {
+      id: 'ice',
+      keyLabel: '3',
+      icon: <Snowflake className="h-4 w-4 text-cyan-200" />,
+      activeCls: 'border-cyan-300/75 bg-cyan-950/85 hover:bg-cyan-900',
+    },
+  ];
+
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex items-end justify-between px-4 pb-5 sm:px-8 sm:pb-7">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex items-end justify-between px-4 pb-5 sm:px-7 sm:pb-7">
       {/* Left Virtual Analog Joystick */}
       <div
         ref={baseRef}
@@ -74,30 +103,66 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
         />
       </div>
 
-      {/* Right Ergonomic Android Action Buttons */}
-      <div className="pointer-events-auto flex items-end gap-3 sm:gap-4">
-        <button
-          type="button"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            onInteract();
-          }}
-          aria-label="Interaksi"
-          className="touch-none-canvas flex h-14 w-14 flex-col items-center justify-center rounded-2xl border-2 border-sky-300/60 bg-sky-600/85 text-white shadow-lg active:scale-95 sm:h-16 sm:w-16"
-        >
-          <Hand className="h-5 w-5" />
-          <span className="mt-0.5 text-[10px] font-bold">E</span>
-        </button>
+      {/* Right Ergonomic Android Magic & Action Cluster */}
+      <div className="pointer-events-auto flex items-end gap-2.5 sm:gap-3.5">
+        {/* Magic Spells Arc */}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {spells.map((s) => {
+              const def = MAGIC_SPELLS[s.id];
+              const cd = cooldowns[s.id];
+              const ready = cd <= 0 && mp >= def.mpCost;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onCastSpell(s.id);
+                  }}
+                  aria-label={def.name}
+                  className={`touch-none-canvas relative flex h-12 w-12 flex-col items-center justify-center rounded-xl border text-white shadow-lg transition-transform active:scale-95 sm:h-13 sm:w-13 ${
+                    ready
+                      ? s.activeCls
+                      : 'border-white/15 bg-slate-900/75 opacity-60'
+                  }`}
+                >
+                  {s.icon}
+                  <span className="mt-0.5 text-[9px] font-bold tracking-tight whitespace-nowrap">
+                    {cd > 0 ? `${cd.toFixed(1)}s` : def.shortLabel}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-        <div className="flex flex-col items-center gap-3">
           <button
             type="button"
             onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onInteract();
+            }}
+            aria-label="Interaksi"
+            className="touch-none-canvas flex h-12 w-12 flex-col items-center justify-center rounded-xl border-2 border-sky-300/60 bg-sky-600/85 text-white shadow-lg active:scale-95 sm:h-14 sm:w-14"
+          >
+            <Hand className="h-4 w-4 sm:h-5 sm:w-5" />
+            <span className="text-[9px] font-bold">E</span>
+          </button>
+        </div>
+
+        {/* Jump & Primary Attack */}
+        <div className="flex flex-col items-center gap-2.5">
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.stopPropagation();
               e.preventDefault();
               onJump();
             }}
             aria-label="Lompat"
-            className="touch-none-canvas flex h-14 w-14 flex-col items-center justify-center rounded-2xl border-2 border-emerald-300/60 bg-emerald-600/85 text-white shadow-lg active:scale-95 sm:h-16 sm:w-16"
+            className="touch-none-canvas flex h-13 w-13 flex-col items-center justify-center rounded-2xl border-2 border-emerald-300/60 bg-emerald-600/85 text-white shadow-lg active:scale-95 sm:h-15 sm:w-15"
           >
             <ArrowUp className="h-5 w-5" />
             <span className="mt-0.5 text-[10px] font-bold">LOMPAT</span>
@@ -106,6 +171,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
           <button
             type="button"
             onPointerDown={(e) => {
+              e.stopPropagation();
               e.preventDefault();
               onAttack();
             }}

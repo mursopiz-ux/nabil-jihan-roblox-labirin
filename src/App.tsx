@@ -126,7 +126,7 @@ export default function App() {
   );
 
   const handleConsumeItem = useCallback(
-    (type: 'heart' | 'speed_boost' | 'shield') => {
+    (type: 'heart' | 'speed_boost' | 'shield' | 'magnet_coin' | 'jump_boost') => {
       mutateSave((prev) => ({
         ...prev,
         consumables: {
@@ -162,6 +162,15 @@ export default function App() {
           nextLastLevel = 1;
         }
 
+        // Boss Dragon Wing Reward Unlocks!
+        const nextOwnedCostumes = [...prev.ownedCostumes];
+        if (worldId === 1 && levelNumber === 5 && !nextOwnedCostumes.includes('aks_sayap_naga_energi')) {
+          nextOwnedCostumes.push('aks_sayap_naga_energi');
+        }
+        if (worldId === 2 && levelNumber === 5 && !nextOwnedCostumes.includes('aks_sayap_naga_api')) {
+          nextOwnedCostumes.push('aks_sayap_naga_api');
+        }
+
         return {
           ...prev,
           hasStarted: true,
@@ -171,6 +180,7 @@ export default function App() {
             ...prev.completedLevels,
             [key]: Math.max(prevStars, stars),
           },
+          ownedCostumes: nextOwnedCostumes,
           lastWorld: nextLastWorld,
           lastLevel: nextLastLevel,
           lastCheckpoint: null,
@@ -226,7 +236,7 @@ export default function App() {
   };
 
   const handleBuyConsumable = (
-    type: 'heart' | 'speed_boost' | 'shield',
+    type: 'heart' | 'speed_boost' | 'shield' | 'magnet_coin' | 'jump_boost',
     price: number
   ) => {
     audioEngine.playSfx('coin');
@@ -242,6 +252,26 @@ export default function App() {
       };
     });
   };
+
+  const handleEquipAccessoryInGame = useCallback(
+    (itemId: string) => {
+      mutateSave((prev) => {
+        if (!prev.ownedCostumes.includes(itemId)) return prev;
+        const charId = prev.selectedCharacter;
+        return {
+          ...prev,
+          equippedCostumes: {
+            ...prev.equippedCostumes,
+            [charId]: {
+              ...prev.equippedCostumes[charId],
+              aksesoris: itemId,
+            },
+          },
+        };
+      });
+    },
+    [mutateSave]
+  );
 
   const handleUpdateSettings = (patch: Partial<SaveData['settings']>) => {
     audioEngine.playSfx('click');
@@ -266,6 +296,8 @@ export default function App() {
         onUpdateCoins={handleUpdateCoins}
         onSaveCheckpoint={handleSaveCheckpoint}
         onConsumeItem={handleConsumeItem}
+        onEquipWeapon={handleBuyOrEquipWeapon}
+        onEquipAccessory={handleEquipAccessoryInGame}
         onLevelComplete={handleLevelComplete}
         onSelectLevel={(w, l) => startLevel(w, l, false)}
         onExitToMenu={() => setScreen('menu')}

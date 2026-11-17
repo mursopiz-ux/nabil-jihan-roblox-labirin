@@ -3,6 +3,8 @@ import {
   CharacterId,
   CostumeCategory,
   CostumeItem,
+  MagicSpellDef,
+  MagicSpellId,
   MonsterKind,
   WeaponDef,
   WeaponId,
@@ -205,7 +207,40 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     projectileSpeed: 12.5,
     color: '#facc15',
     price: 150,
-    description: 'Tongkat bintang ajaib yang meluncurkan proyektil bintang emas.',
+    description: 'Tongkat bintang ajaib (+25% damage sihir Api, Petir & Es!).',
+  },
+};
+
+export const MAGIC_SPELLS: Record<MagicSpellId, MagicSpellDef> = {
+  fireball: {
+    id: 'fireball',
+    name: 'Bola Api',
+    shortLabel: 'Api',
+    mpCost: 20,
+    cooldown: 1.5,
+    damage: 40,
+    color: '#f97316',
+    description: 'Meluncurkan bola api besar yang meledak dan membakar musuh selama 3.5 detik.',
+  },
+  lightning: {
+    id: 'lightning',
+    name: 'Sihir Petir',
+    shortLabel: 'Petir',
+    mpCost: 25,
+    cooldown: 2.2,
+    damage: 44,
+    color: '#38bdf8',
+    description: 'Menyambar hingga 3 monster terdekat sekaligus & melumpuhkan sejenak.',
+  },
+  ice: {
+    id: 'ice',
+    name: 'Badai Es',
+    shortLabel: 'Es',
+    mpCost: 18,
+    cooldown: 1.8,
+    damage: 30,
+    color: '#67e8f9',
+    description: 'Tembakan kristal es yang membekukan & memperlambat gerakan monster.',
   },
 };
 
@@ -215,7 +250,7 @@ export const COSTUME_CATEGORIES: { id: CostumeCategory; label: string }[] = [
   { id: 'topi', label: 'Topi' },
   { id: 'rambut', label: 'Rambut' },
   { id: 'sepatu', label: 'Sepatu' },
-  { id: 'aksesoris', label: 'Aksesori' },
+  { id: 'aksesoris', label: 'Aksesori & Sayap' },
 ];
 
 export const COSTUMES: CostumeItem[] = [
@@ -254,13 +289,15 @@ export const COSTUMES: CostumeItem[] = [
   { id: 'sepatu_hijau', name: 'Sepatu Hutan Kilat', category: 'sepatu', price: 40, color: '#16a34a', accentColor: '#bbf7d0', style: 'boots', description: 'Sepatu bot anti lumpur.' },
   { id: 'sepatu_sayap', name: 'Sepatu Emas Langit', category: 'sepatu', price: 120, color: '#eab308', accentColor: '#fef9c3', style: 'boots', description: 'Sepatu mewah penuh kilau emas.' },
 
-  // Aksesori
+  // Aksesori & Wing Dragon Skins
   { id: 'aks_none', name: 'Tanpa Aksesori', category: 'aksesoris', price: 0, color: 'transparent', style: 'none', description: 'Tampilan polos dan ringan.' },
   { id: 'aks_pita_pink', name: 'Pita Pink Jihan', category: 'aksesoris', price: 0, color: '#f43f8e', accentColor: '#fbcfe8', style: 'ribbon', description: 'Pita rambut pink manis di belakang kepala.' },
   { id: 'aks_ransel', name: 'Tas Ransel Mini', category: 'aksesoris', price: 40, color: '#f43f5e', accentColor: '#fde047', style: 'backpack', description: 'Ransel kecil berwarna ceria.' },
   { id: 'aks_kacamata', name: 'Kacamata Petualang', category: 'aksesoris', price: 55, color: '#0f172a', accentColor: '#38bdf8', style: 'glasses', description: 'Kacamata biru bergaya blocky.' },
   { id: 'aks_jubah', name: 'Jubah Pahlawan', category: 'aksesoris', price: 100, color: '#dc2626', accentColor: '#facc15', style: 'cape', description: 'Jubah merah berkibar di punggung.' },
-  { id: 'aks_sayap', name: 'Sayap Naga Mini', category: 'aksesoris', price: 180, color: '#fbbf24', accentColor: '#ffffff', style: 'wings', description: 'Sepasang sayap mini penjelajah langit.' },
+  { id: 'aks_sayap', name: 'Sayap Naga Mini', category: 'aksesoris', price: 140, color: '#fbbf24', accentColor: '#fef9c3', style: 'wings', wingStyle: 'mini', auraColor: '#facc15', description: 'Sayap naga mini emas yang mengepak saat melompat.' },
+  { id: 'aks_sayap_naga_energi', name: 'Sayap Naga Energi', category: 'aksesoris', price: 180, color: '#06b6d4', accentColor: '#67e8f9', style: 'wings', wingStyle: 'dragon_energy', auraColor: '#22d3ee', unlockHint: 'Kalahkan Boss Forest King atau beli 180 Koin', description: 'Sayap naga kristal energi yang mengepak dengan aura petir & regen lebih cepat!' },
+  { id: 'aks_sayap_naga_api', name: 'Sayap Naga Api', category: 'aksesoris', price: 220, color: '#dc2626', accentColor: '#fb923c', style: 'wings', wingStyle: 'dragon_fire', auraColor: '#f97316', unlockHint: 'Kalahkan Boss Lava Dragon atau beli 220 Koin', description: 'Sayap naga api legendaris dengan aura bara api & daya melayang di udara!' },
 ];
 
 export const MONSTER_TEMPLATES: Record<

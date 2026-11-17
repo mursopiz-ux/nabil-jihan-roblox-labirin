@@ -8,10 +8,12 @@ export function render2DScene(
   sim: LevelSimulation,
   characterId: CharacterId,
   costume: EquippedCostume,
-  weaponId: WeaponId
+  weaponId: WeaponId,
+  zoomFactor = 1.0
 ): void {
   const world = getWorldById(sim.worldId);
-  const tileSize = Math.max(38, Math.min(58, Math.floor(Math.min(width, height) / 11)));
+  const baseTile = Math.max(38, Math.min(58, Math.floor(Math.min(width, height) / 11)));
+  const tileSize = Math.round(baseTile * Math.max(0.65, Math.min(1.65, zoomFactor)));
 
   ctx.fillStyle = sim.worldId === 5 ? '#38bdf8' : sim.worldId === 2 ? '#1c0f0a' : '#0f172a';
   ctx.fillRect(0, 0, width, height);
@@ -224,9 +226,10 @@ export function render2DScene(
     ctx.save();
     if (m.invisibleTimer > 0) ctx.globalAlpha = 0.28;
 
-    ctx.fillStyle = m.hitFlash > 0 ? '#ffffff' : tpl.color;
+    ctx.fillStyle = m.hitFlash > 0 ? '#ffffff' : m.freezeTimer > 0 ? '#67e8f9' : tpl.color;
     ctx.fillRect(mx - r, mz - r + bounce, r * 2, r * 1.85);
-    ctx.strokeStyle = tpl.accentColor;
+    ctx.strokeStyle =
+      m.burnTimer > 0 ? '#f97316' : m.freezeTimer > 0 ? '#38bdf8' : tpl.accentColor;
     ctx.lineWidth = m.isBoss ? 3 : 2;
     ctx.strokeRect(mx - r, mz - r + bounce, r * 2, r * 1.85);
 
@@ -264,11 +267,27 @@ export function render2DScene(
   for (const proj of sim.projectiles) {
     ctx.fillStyle = proj.color;
     ctx.beginPath();
-    ctx.arc(proj.x * tileSize, proj.z * tileSize, tileSize * 0.16, 0, Math.PI * 2);
+    ctx.arc(proj.x * tileSize, proj.z * tileSize, tileSize * (proj.kind === 'player_fireball' ? 0.24 : 0.17), 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Player
+  // Lightning Arcs
+  for (const arc of sim.lightningArcs) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, arc.life / arc.maxLife);
+    ctx.strokeStyle = arc.color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(arc.x1 * tileSize, arc.z1 * tileSize);
+    const midX = ((arc.x1 + arc.x2) / 2 + (Math.random() - 0.5) * 0.35) * tileSize;
+    const midZ = ((arc.z1 + arc.z2) / 2 + (Math.random() - 0.5) * 0.35) * tileSize;
+    ctx.lineTo(midX, midZ);
+    ctx.lineTo(arc.x2 * tileSize, arc.z2 * tileSize);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Player + Dragon Wings & Fire/Energy Aura + Shield Dome
   const p = sim.player;
   const px = p.x * tileSize;
   const pz = p.z * tileSize;
@@ -277,7 +296,21 @@ export function render2DScene(
   const shirt = getCostumeById(costume.baju);
   const hair = getCostumeById(costume.rambut);
   const hat = getCostumeById(costume.topi);
+  const acc = getCostumeById(costume.aksesoris);
   const weapon = WEAPONS[weaponId];
+
+  // Fire / Energy Aura Ring beneath player
+  if (acc.auraColor) {
+    ctx.save();
+    const auraR = tileSize * (0.45 + Math.sin(sim.elapsedTime * 6) * 0.05);
+    ctx.strokeStyle = acc.auraColor;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.72;
+    ctx.beginPath();
+    ctx.arc(px, pz, auraR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath();
@@ -288,6 +321,25 @@ export function render2DScene(
   ctx.translate(px, pz - p.y * 14);
   ctx.scale(jumpScale, jumpScale);
   ctx.rotate(-p.facing + Math.PI);
+
+  // Flapping Dragon Wings in 2D
+  if (acc.style === 'wings') {
+    const flap = Math.sin(p.animTime * (p.animState === 'jump' ? 14 : 7)) * 4;
+    const wingSpan = acc.wingStyle === 'dragon_fire' || acc.wingStyle === 'dragon_energy' ? 24 : 16;
+    ctx.fillStyle = acc.accentColor || acc.color;
+    ctx.beginPath();
+    ctx.moveTo(-10, -2);
+    ctx.lineTo(-wingSpan, -10 + flap);
+    ctx.lineTo(-wingSpan + 4, 8 + flap * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(10, -2);
+    ctx.lineTo(wingSpan, -10 + flap);
+    ctx.lineTo(wingSpan - 4, 8 + flap * 0.6);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   ctx.fillStyle = p.hitTimer > 0 ? '#fca5a5' : shirt.color;
   ctx.fillRect(-13, -10, 26, 20);
@@ -307,6 +359,18 @@ export function render2DScene(
     ctx.stroke();
   }
   ctx.restore();
+
+  if (p.shieldTimer > 0) {
+    ctx.save();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.fillStyle = 'rgba(56,189,248,0.16)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(px, pz - p.y * 14, tileSize * 0.54, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // Particles & Floating Texts
   for (const pt of sim.particles) {

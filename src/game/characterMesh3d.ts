@@ -10,6 +10,9 @@ export interface BlockyCharacterRig {
   rightLeg: THREE.Object3D;
   headGroup: THREE.Object3D;
   weaponGroup: THREE.Object3D;
+  wingLeftPivot?: THREE.Object3D;
+  wingRightPivot?: THREE.Object3D;
+  auraGroup?: THREE.Object3D;
 }
 
 export function buildBlockyCharacter(
@@ -172,7 +175,11 @@ export function buildBlockyCharacter(
 
   group.add(headGroup);
 
-  // Backpack / Cape / Wings on torso back
+  // Backpack / Cape / Articulated Dragon Wings on torso back
+  let wingLeftPivot: THREE.Object3D | undefined;
+  let wingRightPivot: THREE.Object3D | undefined;
+  let auraGroup: THREE.Object3D | undefined;
+
   if (acc.style === 'backpack') {
     const pack = new THREE.Mesh(
       new THREE.BoxGeometry(0.4, 0.42, 0.2),
@@ -190,14 +197,87 @@ export function buildBlockyCharacter(
     cape.rotation.x = 0.12;
     group.add(cape);
   } else if (acc.style === 'wings') {
-    const wingMat = new THREE.MeshStandardMaterial({ color: acc.color, roughness: 0.35, metalness: 0.3 });
-    const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.32, 0.06), wingMat);
-    wingL.position.set(-0.34, 0.86, -0.22);
-    wingL.rotation.y = -0.35;
-    const wingR = wingL.clone();
-    wingR.position.x = 0.34;
-    wingR.rotation.y = 0.35;
-    group.add(wingL, wingR);
+    const isLargeDragon = acc.wingStyle === 'dragon_fire' || acc.wingStyle === 'dragon_energy';
+    const wScale = isLargeDragon ? 1.35 : 0.95;
+    const boneMat = new THREE.MeshStandardMaterial({
+      color: acc.color,
+      roughness: 0.3,
+      metalness: 0.4,
+      emissive: isLargeDragon ? acc.color : 0x000000,
+      emissiveIntensity: isLargeDragon ? 0.25 : 0,
+    });
+    const membraneMat = new THREE.MeshStandardMaterial({
+      color: acc.accentColor || '#ffffff',
+      emissive: acc.auraColor || acc.accentColor || '#fde047',
+      emissiveIntensity: isLargeDragon ? 0.6 : 0.25,
+      roughness: 0.25,
+      transparent: true,
+      opacity: 0.88,
+    });
+
+    const buildWingSide = (side: -1 | 1) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.14, 0.92, -0.18);
+      // Inner bone spar
+      const upperBone = new THREE.Mesh(new THREE.BoxGeometry(0.42 * wScale, 0.09, 0.08), boneMat);
+      upperBone.position.set(side * 0.24 * wScale, 0.12, -0.02);
+      upperBone.rotation.z = side * 0.28;
+      // Outer tip feather/claw
+      const outerTip = new THREE.Mesh(new THREE.BoxGeometry(0.32 * wScale, 0.08, 0.07), boneMat);
+      outerTip.position.set(side * 0.54 * wScale, 0.14, -0.04);
+      outerTip.rotation.z = side * -0.18;
+      // Glowing wing membrane
+      const membrane = new THREE.Mesh(
+        new THREE.BoxGeometry(0.58 * wScale, 0.36 * wScale, 0.04),
+        membraneMat
+      );
+      membrane.position.set(side * 0.36 * wScale, -0.02, -0.03);
+      membrane.rotation.z = side * 0.16;
+      // Lower tail fin on dragon wings
+      if (isLargeDragon) {
+        const lowerFin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.24, 0.04), membraneMat);
+        lowerFin.position.set(side * 0.22, -0.22, -0.04);
+        lowerFin.rotation.z = side * 0.35;
+        pivot.add(lowerFin);
+      }
+      pivot.add(upperBone, outerTip, membrane);
+      pivot.rotation.y = side * -0.28;
+      return pivot;
+    };
+
+    wingLeftPivot = buildWingSide(-1);
+    wingRightPivot = buildWingSide(1);
+    group.add(wingLeftPivot, wingRightPivot);
+
+    // Fire / Energy Aura VFX
+    if (acc.auraColor) {
+      const aura = new THREE.Group();
+      const ringGeo = new THREE.TorusGeometry(0.62, 0.045, 8, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: acc.auraColor,
+        transparent: true,
+        opacity: 0.72,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.08;
+      aura.add(ring);
+
+      const sparkMat = new THREE.MeshBasicMaterial({
+        color: acc.accentColor || acc.auraColor,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const sparkGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+      for (let i = 0; i < 4; i++) {
+        const ang = (Math.PI / 2) * i;
+        const spark = new THREE.Mesh(sparkGeo, sparkMat);
+        spark.position.set(Math.cos(ang) * 0.56, 0.45 + (i % 2) * 0.35, Math.sin(ang) * 0.56);
+        aura.add(spark);
+      }
+      auraGroup = aura;
+      group.add(auraGroup);
+    }
   }
 
   // Arms
@@ -273,7 +353,18 @@ export function buildBlockyCharacter(
 
   group.add(leftLeg, rightLeg);
 
-  return { group, leftArm, rightArm, leftLeg, rightLeg, headGroup, weaponGroup };
+  return {
+    group,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    headGroup,
+    weaponGroup,
+    wingLeftPivot,
+    wingRightPivot,
+    auraGroup,
+  };
 }
 
 export function buildBlockyMonster(kind: MonsterKind, isBoss: boolean): THREE.Group {
@@ -464,5 +555,22 @@ export function animateCharacterRig(
     rig.rightLeg.rotation.x = 0;
     rig.leftArm.rotation.x = Math.sin(t * 2.5) * 0.08;
     rig.rightArm.rotation.x = -Math.sin(t * 2.5) * 0.08;
+  }
+
+  // Dynamic Wing Flap & Fire/Energy Aura animation
+  if (rig.wingLeftPivot && rig.wingRightPivot) {
+    const flapSpeed = animState === 'jump' ? 14 : animState === 'run' ? 10 : animState === 'walk' ? 6 : 2.8;
+    const flapAmp = animState === 'jump' ? 0.52 : animState === 'run' ? 0.34 : 0.16;
+    const wave = Math.sin(t * flapSpeed) * flapAmp;
+    rig.wingLeftPivot.rotation.y = 0.28 + wave;
+    rig.wingRightPivot.rotation.y = -0.28 - wave;
+    rig.wingLeftPivot.rotation.z = animState === 'jump' ? Math.cos(t * flapSpeed) * 0.22 : 0.08;
+    rig.wingRightPivot.rotation.z = animState === 'jump' ? -Math.cos(t * flapSpeed) * 0.22 : -0.08;
+  }
+
+  if (rig.auraGroup) {
+    rig.auraGroup.rotation.y = t * 2.4;
+    const pulse = 1 + Math.sin(t * 5) * 0.08;
+    rig.auraGroup.scale.set(pulse, 1, pulse);
   }
 }

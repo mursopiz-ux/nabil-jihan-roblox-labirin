@@ -5,11 +5,14 @@ import {
   Code2,
   Coins,
   Download,
+  Flame,
   Heart,
   Image as ImageIcon,
   Lock,
+  Magnet,
   Shield,
   Smartphone,
+  Snowflake,
   Sparkles,
   Star,
   Swords,
@@ -23,6 +26,7 @@ import {
   CHARACTERS,
   COSTUMES,
   COSTUME_CATEGORIES,
+  MAGIC_SPELLS,
   WEAPONS,
   WORLDS,
 } from '../game/catalog';
@@ -484,6 +488,11 @@ export const CostumeShopScreen: React.FC<{
                       />
                     </div>
                     <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+                    {item.unlockHint && !owned && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-cyan-300">
+                        {item.unlockHint}
+                      </p>
+                    )}
                   </div>
 
                   <button
@@ -525,12 +534,15 @@ export const CostumeShopScreen: React.FC<{
 export const InventoryScreen: React.FC<{
   saveData: SaveData;
   onBuyOrEquipWeapon: (id: WeaponId) => void;
-  onBuyConsumable: (type: 'heart' | 'speed_boost' | 'shield', price: number) => void;
+  onBuyConsumable: (
+    type: 'heart' | 'speed_boost' | 'shield' | 'magnet_coin' | 'jump_boost',
+    price: number
+  ) => void;
   onBack: () => void;
 }> = ({ saveData, onBuyOrEquipWeapon, onBuyConsumable, onBack }) => {
   const weapons = Object.values(WEAPONS);
   const consumables: {
-    id: 'heart' | 'speed_boost' | 'shield';
+    id: 'heart' | 'speed_boost' | 'shield' | 'magnet_coin' | 'jump_boost';
     name: string;
     price: number;
     desc: string;
@@ -538,10 +550,17 @@ export const InventoryScreen: React.FC<{
   }[] = [
     {
       id: 'heart',
-      name: 'Ramuan Hati (+35 HP)',
+      name: 'Health Potion (+35 HP)',
       price: 25,
-      desc: 'Gunakan di HUD saat bertarung untuk memulihkan HP.',
+      desc: 'Pulihkan +35 HP & +20 MP langsung saat bertarung.',
       icon: <Heart className="h-5 w-5 text-rose-400" />,
+    },
+    {
+      id: 'shield',
+      name: 'Perisai Pelindung (9s)',
+      price: 35,
+      desc: 'Blokir serangan monster & boss selama 9 detik.',
+      icon: <Shield className="h-5 w-5 text-sky-400" />,
     },
     {
       id: 'speed_boost',
@@ -551,16 +570,25 @@ export const InventoryScreen: React.FC<{
       icon: <Zap className="h-5 w-5 text-cyan-400" />,
     },
     {
-      id: 'shield',
-      name: 'Perisai Pelindung (9s)',
-      price: 35,
-      desc: 'Melindungi dari serangan monster & boss.',
-      icon: <Shield className="h-5 w-5 text-sky-400" />,
+      id: 'magnet_coin',
+      name: 'Magnet Koin (10s)',
+      price: 30,
+      desc: 'Tarik seluruh koin di sekitar karakter secara otomatis.',
+      icon: <Magnet className="h-5 w-5 text-pink-400" />,
+    },
+    {
+      id: 'jump_boost',
+      name: 'Super Jump (10s)',
+      price: 30,
+      desc: 'Lompatan lebih tinggi melewati lava & jebakan.',
+      icon: <Sparkles className="h-5 w-5 text-emerald-400" />,
     },
   ];
 
+  const spells = Object.values(MAGIC_SPELLS);
+
   return (
-    <ScreenShell title="Inventory & Senjata" coins={saveData.coins} onBack={onBack}>
+    <ScreenShell title="Inventory, Sihir & Senjata" coins={saveData.coins} onBack={onBack}>
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <section>
           <h2 className="mb-3 flex items-center gap-2 font-display text-xl font-bold text-white">
@@ -610,7 +638,41 @@ export const InventoryScreen: React.FC<{
 
         <section>
           <h2 className="mb-3 flex items-center gap-2 font-display text-xl font-bold text-white">
-            <Sparkles className="h-5 w-5 text-emerald-400" /> Stok Power-Up Tas
+            <Flame className="h-5 w-5 text-orange-400" /> Sihir Elemen (Bola Api, Petir &amp; Es)
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {spells.map((sp) => (
+              <div
+                key={sp.id}
+                className="rounded-2xl border border-white/15 bg-slate-900/75 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 font-display text-base font-bold text-white">
+                    {sp.id === 'fireball' ? (
+                      <Flame className="h-5 w-5 text-orange-400" />
+                    ) : sp.id === 'lightning' ? (
+                      <Zap className="h-5 w-5 text-sky-400" />
+                    ) : (
+                      <Snowflake className="h-5 w-5 text-cyan-300" />
+                    )}
+                    {sp.name}
+                  </span>
+                  <span className="font-mono-num text-xs font-bold text-sky-300">
+                    {sp.mpCost} MP
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-400">{sp.description}</p>
+                <div className="mt-2 font-mono-num text-[11px] font-semibold text-amber-300">
+                  DMG {sp.damage} · Cooldown {sp.cooldown}s
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 flex items-center gap-2 font-display text-xl font-bold text-white">
+            <Sparkles className="h-5 w-5 text-emerald-400" /> Stok Tas Inventory (Pakai saat Bertarung)
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {consumables.map((item) => {

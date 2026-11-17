@@ -1,10 +1,11 @@
 import { audioEngine } from './audio';
-import { CHARACTERS, MONSTER_TEMPLATES, WEAPONS } from './catalog';
+import { CHARACTERS, MAGIC_SPELLS, MONSTER_TEMPLATES, WEAPONS } from './catalog';
 import { generateMazeLevel, isTileWalkable } from './mazeGenerator';
 import {
   CharacterId,
   InputState,
   LevelSimulation,
+  MagicSpellId,
   MonsterEntity,
   PowerUpType,
   TileType,
@@ -24,6 +25,11 @@ export interface SimulationCallbacks {
   onPowerUpStored?: (type: Exclude<PowerUpType, 'gold_coin' | 'mystery_box' | 'key'>) => void;
   onLevelWin: (coinsEarned: number, monstersDefeated: number, elapsed: number) => void;
   onGameOver: () => void;
+}
+
+export interface StepSimulationOptions {
+  hasDragonWings?: boolean;
+  wingStyle?: 'mini' | 'dragon_fire' | 'dragon_energy';
 }
 
 export function createLevelSimulation(
@@ -54,6 +60,8 @@ export function createLevelSimulation(
       facing: 0,
       hp: charDef.stats.maxHp,
       maxHp: charDef.stats.maxHp,
+      mp: 100,
+      maxMp: 100,
       keysHeld: 0,
       grounded: true,
       animState: 'idle',
@@ -62,6 +70,15 @@ export function createLevelSimulation(
       attackCooldown: 0,
       hitTimer: 0,
       invulnTimer: 0,
+      timeSinceLastHit: 0,
+      regenTickTimer: 0,
+      damageFlashTimer: 0,
+      koCount: 0,
+      magicCooldowns: {
+        fireball: 0,
+        lightning: 0,
+        ice: 0,
+      },
       speedBoostTimer: 0,
       shieldTimer: 0,
       magnetTimer: 0,
@@ -73,6 +90,7 @@ export function createLevelSimulation(
     monsters,
     items,
     projectiles: [],
+    lightningArcs: [],
     shockwaves: [],
     boulders,
     fallingRocks,
@@ -281,6 +299,9 @@ function damagePlayer(
   p.hp = Math.max(0, p.hp - amount);
   p.hitTimer = 0.28;
   p.invulnTimer = 1.1;
+  p.timeSinceLastHit = 0;
+  p.regenTickTimer = 0;
+  p.damageFlashTimer = 0.42;
   p.animState = 'hit';
 
   const dx = p.x - fromX;
@@ -294,10 +315,164 @@ function damagePlayer(
   audioEngine.playSfx('hit');
 
   if (p.hp <= 0) {
+    p.koCount += 1;
     sim.gameOver = true;
-    audioEngine.playSfx('gameover');
+    audioEngine.playSfx('ko');
     callbacks.onGameOver();
   }
+}
+
+export function respawnPlayerAtCheckpoint(sim: LevelSimulation): void {
+  const p = sim.player;
+  p.x = p.checkpointX;
+  p.y = 0;
+  p.z = p.checkpointZ;
+  p.vx = 0;
+  p.vy = 0;
+  p.vz = 0;
+  p.hp = p.maxHp;
+  p.mp = p.maxMp;
+  p.hitTimer = 0;
+  p.invulnTimer = 2.6;
+  p.timeSinceLastHit = 0;
+  p.damageFlashTimer = 0;
+  p.animState = 'idle';
+  sim.gameOver = false;
+  sim.bannerMessage = p.checkpointReached
+    ? 'Respawn di Checkpoint!'
+    : 'Respawn di Titik Awal!';
+  sim.bannerTimer = 2.4;
+
+  // Gently push away monsters camping too close to spawn
+  for (const m of sim.monsters) {
+    if (!m.alive || m.isBoss) continue;
+    if (Math.hypot(m.x - p.x, m.z - p.z) < 2.2) {
+      m.x = m.originX;
+      m.z = m.originZ;
+      m.stunTimer = Math.max(m.stunTimer, 1.0);
+    }
+  }
+
+  spawnBurst(sim, p.x, 0.5, p.z, '#34d399', 16);
+  addFloatingText(sim, p.x, 0.7, p.z, 'BANGKIT!', '#34d399');
+  audioEngine.playSfx('respawn');
+}
+
+export function castMagicSpell(
+  sim: LevelSimulation,
+  spellId: MagicSpellId,
+  characterId: CharacterId,
+  weaponId: WeaponId,
+  callbacks: SimulationCallbacks
+): boolean {
+  if (sim.levelCompleted || sim.gameOver) return false;
+  const p = sim.player;
+  const spell = MAGIC_SPELLS[spellId];
+  if (p.magicCooldowns[spellId] > 0) return false;
+  if (p.mp < spell.mpCost) {
+    addFloatingText(sim, p.x, p.y + 0.4, p.z, 'MP Kurang!', '#93c5fd');
+    return false;
+  }
+
+  const charDef = CHARACTERS[characterId];
+  const wandBoost = weaponId === 'magic_wand' ? 1.25 : 1.0;
+  const dmg = Math.round((spell.damage + charDef.stats.attackBonus) * wandBoost);
+
+  p.mp -= spell.mpCost;
+  p.magicCooldowns[spellId] = spell.cooldown;
+  p.attackTimer = 0.28;
+
+  if (spellId === 'fireball') {
+    const spd = 11.5;
+    sim.projectiles.push({
+      id: uid('mfire'),
+      fromPlayer: true,
+      kind: 'player_fireball',
+      x: p.x + Math.sin(p.facing) * 0.55,
+      y: p.y + 0.55,
+      z: p.z + Math.cos(p.facing) * 0.55,
+      vx: Math.sin(p.facing) * spd,
+      vy: 0,
+      vz: Math.cos(p.facing) * spd,
+      damage: dmg,
+      color: spell.color,
+      radius: 0.48,
+      life: 1.0,
+    });
+    spawnBurst(sim, p.x + Math.sin(p.facing) * 0.5, p.y + 0.5, p.z + Math.cos(p.facing) * 0.5, '#f97316', 10);
+    addFloatingText(sim, p.x, p.y + 0.6, p.z, 'BOLA API!', '#fb923c');
+    audioEngine.playSfx('fireball');
+    return true;
+  }
+
+  if (spellId === 'ice') {
+    const spd = 11.0;
+    sim.projectiles.push({
+      id: uid('mice'),
+      fromPlayer: true,
+      kind: 'player_ice',
+      x: p.x + Math.sin(p.facing) * 0.55,
+      y: p.y + 0.55,
+      z: p.z + Math.cos(p.facing) * 0.55,
+      vx: Math.sin(p.facing) * spd,
+      vy: 0,
+      vz: Math.cos(p.facing) * spd,
+      damage: dmg,
+      color: spell.color,
+      radius: 0.45,
+      life: 1.05,
+    });
+    spawnBurst(sim, p.x + Math.sin(p.facing) * 0.5, p.y + 0.5, p.z + Math.cos(p.facing) * 0.5, '#67e8f9', 10);
+    addFloatingText(sim, p.x, p.y + 0.6, p.z, 'SIHIR ES!', '#67e8f9');
+    audioEngine.playSfx('ice');
+    return true;
+  }
+
+  // Lightning: instant chain strike up to 3 alive monsters within 7.2 tiles
+  const targets = sim.monsters
+    .filter((m) => m.alive && Math.hypot(m.x - p.x, m.z - p.z) <= 7.2)
+    .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))
+    .slice(0, 3);
+
+  let prevX = p.x;
+  let prevZ = p.z;
+  if (targets.length === 0) {
+    const endX = p.x + Math.sin(p.facing) * 3.8;
+    const endZ = p.z + Math.cos(p.facing) * 3.8;
+    sim.lightningArcs.push({
+      id: uid('arc'),
+      x1: p.x,
+      z1: p.z,
+      x2: endX,
+      z2: endZ,
+      life: 0.28,
+      maxLife: 0.28,
+      color: '#38bdf8',
+    });
+    spawnBurst(sim, endX, p.y + 0.4, endZ, '#38bdf8', 10);
+  } else {
+    for (const m of targets) {
+      sim.lightningArcs.push({
+        id: uid('arc'),
+        x1: prevX,
+        z1: prevZ,
+        x2: m.x,
+        z2: m.z,
+        life: 0.34,
+        maxLife: 0.34,
+        color: '#38bdf8',
+      });
+      m.shockTimer = 1.4;
+      m.stunTimer = Math.max(m.stunTimer, m.isBoss ? 0.55 : 1.35);
+      damageMonster(sim, m, dmg, prevX, prevZ, callbacks);
+      spawnBurst(sim, m.x, 0.7, m.z, '#facc15', 10);
+      prevX = m.x;
+      prevZ = m.z;
+    }
+  }
+  addFloatingText(sim, p.x, p.y + 0.6, p.z, 'PETIR!', '#38bdf8');
+  audioEngine.playSfx('lightning');
+  return true;
 }
 
 export function applyPowerUpEffect(
@@ -328,9 +503,10 @@ export function applyPowerUpEffect(
     }
     case 'heart': {
       p.hp = Math.min(p.maxHp, p.hp + 35);
-      spawnBurst(sim, x, 0.3, z, '#f43f5e', 10);
+      p.mp = Math.min(p.maxMp, p.mp + 20);
+      spawnBurst(sim, x, 0.3, z, '#4ade80', 12);
       addFloatingText(sim, x, 0.4, z, '+35 HP', '#fb7185');
-      audioEngine.playSfx('powerup');
+      audioEngine.playSfx('heal');
       break;
     }
     case 'speed_boost': {
@@ -342,9 +518,9 @@ export function applyPowerUpEffect(
     }
     case 'shield': {
       p.shieldTimer = 9.0;
-      spawnBurst(sim, x, 0.3, z, '#60a5fa', 10);
+      spawnBurst(sim, x, 0.3, z, '#60a5fa', 12);
       addFloatingText(sim, x, 0.4, z, 'SHIELD!', '#60a5fa');
-      audioEngine.playSfx('powerup');
+      audioEngine.playSfx('shield');
       break;
     }
     case 'magnet_coin': {
@@ -411,7 +587,8 @@ export function stepLevelSimulation(
   input: InputState,
   characterId: CharacterId,
   weaponId: WeaponId,
-  callbacks: SimulationCallbacks
+  callbacks: SimulationCallbacks,
+  options?: StepSimulationOptions
 ): void {
   if (sim.levelCompleted || sim.gameOver) return;
 
@@ -442,16 +619,41 @@ export function stepLevelSimulation(
   const charDef = CHARACTERS[characterId];
   const weapon = WEAPONS[weaponId];
 
-  // Timers
+  // Timers & MP/HP Regen
   p.animTime += clampedDt;
+  p.timeSinceLastHit += clampedDt;
   if (p.attackTimer > 0) p.attackTimer = Math.max(0, p.attackTimer - clampedDt);
   if (p.attackCooldown > 0) p.attackCooldown = Math.max(0, p.attackCooldown - clampedDt);
   if (p.hitTimer > 0) p.hitTimer = Math.max(0, p.hitTimer - clampedDt);
   if (p.invulnTimer > 0) p.invulnTimer = Math.max(0, p.invulnTimer - clampedDt);
+  if (p.damageFlashTimer > 0) p.damageFlashTimer = Math.max(0, p.damageFlashTimer - clampedDt);
   if (p.speedBoostTimer > 0) p.speedBoostTimer = Math.max(0, p.speedBoostTimer - clampedDt);
   if (p.shieldTimer > 0) p.shieldTimer = Math.max(0, p.shieldTimer - clampedDt);
   if (p.magnetTimer > 0) p.magnetTimer = Math.max(0, p.magnetTimer - clampedDt);
   if (p.jumpBoostTimer > 0) p.jumpBoostTimer = Math.max(0, p.jumpBoostTimer - clampedDt);
+
+  p.magicCooldowns.fireball = Math.max(0, p.magicCooldowns.fireball - clampedDt);
+  p.magicCooldowns.lightning = Math.max(0, p.magicCooldowns.lightning - clampedDt);
+  p.magicCooldowns.ice = Math.max(0, p.magicCooldowns.ice - clampedDt);
+
+  // Passive MP Regeneration
+  if (p.mp < p.maxMp) {
+    const mpRate = weaponId === 'magic_wand' ? 11.5 : 8.5;
+    p.mp = Math.min(p.maxMp, p.mp + mpRate * clampedDt);
+  }
+
+  // Passive HP Regeneration after 4.5s without taking damage
+  if (p.hp > 0 && p.hp < p.maxHp && p.timeSinceLastHit >= 4.5) {
+    const hpRate =
+      options?.wingStyle === 'dragon_energy' || options?.wingStyle === 'dragon_fire' ? 8.0 : 5.5;
+    p.hp = Math.min(p.maxHp, p.hp + hpRate * clampedDt);
+    p.regenTickTimer += clampedDt;
+    if (p.regenTickTimer >= 1.1) {
+      p.regenTickTimer = 0;
+      addFloatingText(sim, p.x, p.y + 0.35, p.z, '+HP', '#4ade80');
+      spawnBurst(sim, p.x, p.y + 0.3, p.z, '#4ade80', 3);
+    }
+  }
 
   const curGx = Math.round(p.x);
   const curGz = Math.round(p.z);
@@ -496,7 +698,7 @@ export function stepLevelSimulation(
     p.vz = 0;
   }
 
-  // Jump & Gravity
+  // Jump, Dragon Wing Glide & Gravity
   if (input.jumpPressed && p.grounded) {
     const jumpMul = p.jumpBoostTimer > 0 ? 1.38 : 1.0;
     p.vy = charDef.stats.jumpForce * jumpMul;
@@ -505,7 +707,12 @@ export function stepLevelSimulation(
   }
 
   if (!p.grounded) {
-    p.vy -= 22.0 * clampedDt;
+    const glideActive = Boolean(options?.hasDragonWings) && p.vy < 0;
+    const gravity = glideActive ? 12.0 : 22.0;
+    p.vy -= gravity * clampedDt;
+    if (glideActive && p.vy < -2.4) {
+      p.vy = -2.4;
+    }
     p.y += p.vy * clampedDt;
     if (p.y <= 0) {
       p.y = 0;
@@ -686,12 +893,26 @@ export function stepLevelSimulation(
     }
   }
 
-  // Monsters & 3-Phase Bosses with 7-State A* AI
+  // Monsters & 3-Phase Bosses with 7-State A* AI & Elemental Statuses
   for (const m of sim.monsters) {
     if (!m.alive) continue;
     m.animTime += clampedDt;
     if (m.hitFlash > 0) m.hitFlash = Math.max(0, m.hitFlash - clampedDt);
     if (m.attackTimer > 0) m.attackTimer = Math.max(0, m.attackTimer - clampedDt);
+    if (m.freezeTimer > 0) m.freezeTimer = Math.max(0, m.freezeTimer - clampedDt);
+    if (m.shockTimer > 0) m.shockTimer = Math.max(0, m.shockTimer - clampedDt);
+
+    // Fireball Burn DoT
+    if (m.burnTimer > 0) {
+      m.burnTimer = Math.max(0, m.burnTimer - clampedDt);
+      m.burnTickTimer += clampedDt;
+      if (m.burnTickTimer >= 0.9) {
+        m.burnTickTimer = 0;
+        damageMonster(sim, m, 10 + m.defense, m.x, m.z, callbacks);
+        spawnBurst(sim, m.x, 0.5, m.z, '#f97316', 4);
+        if (!m.alive) continue;
+      }
+    }
 
     // Leap physics (Shadow Slime)
     if (m.y > 0 || m.leapVy !== 0) {
@@ -940,7 +1161,20 @@ export function stepLevelSimulation(
       proj.life <= 0 ||
       !isTileWalkable(t, sim.doorOpen, sim.movingWallOpen, sim.unlockedDoors, gx, gz)
     ) {
-      spawnBurst(sim, proj.x, proj.y, proj.z, proj.color, 5);
+      if (proj.kind === 'player_fireball' || proj.kind === 'player_ice') {
+        const splashRad = 1.65;
+        for (const m of sim.monsters) {
+          if (!m.alive) continue;
+          if (Math.hypot(m.x - proj.x, m.z - proj.z) <= splashRad) {
+            damageMonster(sim, m, Math.round(proj.damage * 0.75), proj.x, proj.z, callbacks);
+            if (proj.kind === 'player_fireball') m.burnTimer = 3.5;
+            if (proj.kind === 'player_ice') m.freezeTimer = 3.6;
+          }
+        }
+        spawnBurst(sim, proj.x, proj.y, proj.z, proj.color, 12);
+      } else {
+        spawnBurst(sim, proj.x, proj.y, proj.z, proj.color, 5);
+      }
       sim.projectiles.splice(i, 1);
       continue;
     }
@@ -949,9 +1183,27 @@ export function stepLevelSimulation(
       let hit = false;
       for (const m of sim.monsters) {
         if (!m.alive) continue;
-        const hitRad = m.isBoss ? 1.1 : m.isElite ? 0.85 : 0.68;
+        const hitRad = (m.isBoss ? 1.1 : m.isElite ? 0.85 : 0.68) + (proj.kind === 'player_fireball' || proj.kind === 'player_ice' ? 0.2 : 0);
         if (Math.hypot(m.x - proj.x, m.z - proj.z) < hitRad) {
-          damageMonster(sim, m, proj.damage, proj.x, proj.z, callbacks);
+          if (proj.kind === 'player_fireball' || proj.kind === 'player_ice') {
+            const splashRad = 1.8;
+            for (const other of sim.monsters) {
+              if (!other.alive) continue;
+              if (Math.hypot(other.x - proj.x, other.z - proj.z) <= splashRad) {
+                const dmgScale = other.id === m.id ? 1.0 : 0.75;
+                damageMonster(sim, other, Math.round(proj.damage * dmgScale), proj.x, proj.z, callbacks);
+                if (proj.kind === 'player_fireball') {
+                  other.burnTimer = 3.5;
+                  other.burnTickTimer = 0;
+                } else {
+                  other.freezeTimer = 3.8;
+                }
+              }
+            }
+            spawnBurst(sim, proj.x, proj.y, proj.z, proj.color, 14);
+          } else {
+            damageMonster(sim, m, proj.damage, proj.x, proj.z, callbacks);
+          }
           hit = true;
           break;
         }
@@ -962,6 +1214,14 @@ export function stepLevelSimulation(
         damagePlayer(sim, proj.damage, proj.x, proj.z, callbacks);
         sim.projectiles.splice(i, 1);
       }
+    }
+  }
+
+  // Lightning Arcs Decay
+  for (let i = sim.lightningArcs.length - 1; i >= 0; i--) {
+    sim.lightningArcs[i].life -= clampedDt;
+    if (sim.lightningArcs[i].life <= 0) {
+      sim.lightningArcs.splice(i, 1);
     }
   }
 
@@ -1020,6 +1280,10 @@ function makeSlimeHelper(x: number, z: number): MonsterEntity {
     phase: 1,
     specialTimer: 3,
     leapVy: 0,
+    burnTimer: 0,
+    burnTickTimer: 0,
+    freezeTimer: 0,
+    shockTimer: 0,
     alive: true,
     animTime: 0,
   };
@@ -1032,14 +1296,15 @@ function moveMonsterWithAStar(
   targetZ: number,
   dt: number
 ): void {
+  const effectiveSpeed = m.freezeTimer > 0 ? m.speed * 0.42 : m.speed;
   if (m.isPhasing) {
     // Phantom ghost can phase straight through walls!
     const dx = targetX - m.x;
     const dz = targetZ - m.z;
     const len = Math.hypot(dx, dz) || 1;
     m.facing = Math.atan2(dx, dz);
-    const nx = m.x + (dx / len) * m.speed * dt;
-    const nz = m.z + (dz / len) * m.speed * dt;
+    const nx = m.x + (dx / len) * effectiveSpeed * dt;
+    const nz = m.z + (dz / len) * effectiveSpeed * dt;
     if (canStandAt(sim, nx, nz, 0.25, true)) {
       m.x = nx;
       m.z = nz;
@@ -1073,8 +1338,8 @@ function moveMonsterWithAStar(
   }
 
   m.facing = Math.atan2(dx, dz);
-  const mx = m.x + (dx / dist) * m.speed * dt;
-  const mz = m.z + (dz / dist) * m.speed * dt;
+  const mx = m.x + (dx / dist) * effectiveSpeed * dt;
+  const mz = m.z + (dz / dist) * effectiveSpeed * dt;
   if (canStandAt(sim, mx, m.z, 0.26)) m.x = mx;
   if (canStandAt(sim, m.x, mz, 0.26)) m.z = mz;
 }

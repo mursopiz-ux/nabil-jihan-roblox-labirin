@@ -8,6 +8,7 @@ import {
   buildBlockyMonster,
 } from './characterMesh3d';
 import {
+  CameraPOV,
   CharacterId,
   EquippedCostume,
   GraphicsQuality,
@@ -61,6 +62,7 @@ export class MazeRenderer3D {
   private monsterMeshes = new Map<string, THREE.Group>();
   private itemMeshes = new Map<string, THREE.Object3D>();
   private projMeshes = new Map<string, THREE.Mesh>();
+  private lightningMeshes = new Map<string, THREE.Mesh>();
   private shockwaveMeshes = new Map<string, THREE.Mesh>();
   private boulderMeshes = new Map<string, THREE.Mesh>();
   private rockMeshes = new Map<string, THREE.Group>();
@@ -77,6 +79,11 @@ export class MazeRenderer3D {
 
   private camPos = new THREE.Vector3(0, 8, 8);
   private camLook = new THREE.Vector3(0, 0.8, 0);
+  private povMode: CameraPOV = 'third_person';
+  private camYaw = 0; // 0 looks toward -Z (upward on grid)
+  private camPitch = 0.62;
+  private camZoom = 7.6; // distance in 3rd person, height in top view, FOV offset in 1st person
+  private fpvFov = 62;
 
   constructor(
     container: HTMLElement,
@@ -459,13 +466,81 @@ export class MazeRenderer3D {
     }
   }
 
+  public setPovMode(mode: CameraPOV): void {
+    this.povMode = mode;
+    if (mode === 'first_person') {
+      this.camPitch = THREE.MathUtils.clamp(this.camPitch, -0.45, 0.45);
+      this.camera.fov = this.fpvFov;
+      this.camera.updateProjectionMatrix();
+    } else if (mode === 'third_person') {
+      this.camPitch = 0.62;
+      this.camera.fov = 54;
+      this.camera.updateProjectionMatrix();
+    } else {
+      this.camera.fov = 52;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  public getPovMode(): CameraPOV {
+    return this.povMode;
+  }
+
+  public getCameraYaw(): number {
+    return this.camYaw;
+  }
+
+  public rotateCamera(dxPx: number, dyPx: number): void {
+    this.camYaw -= dxPx * 0.0065;
+    if (this.povMode === 'first_person') {
+      this.camPitch = THREE.MathUtils.clamp(this.camPitch + dyPx * 0.0045, -0.55, 0.55);
+    } else if (this.povMode === 'third_person') {
+      this.camPitch = THREE.MathUtils.clamp(this.camPitch + dyPx * 0.0045, 0.22, 1.15);
+    }
+  }
+
+  public zoomCamera(delta: number): void {
+    if (this.povMode === 'first_person') {
+      this.fpvFov = THREE.MathUtils.clamp(this.fpvFov + delta * 3.5, 42, 76);
+      this.camera.fov = this.fpvFov;
+      this.camera.updateProjectionMatrix();
+    } else {
+      this.camZoom = THREE.MathUtils.clamp(this.camZoom + delta, 3.4, 15.5);
+    }
+  }
+
+  public resetCameraOrientation(): void {
+    this.camYaw = 0;
+    this.camPitch = 0.62;
+    this.camZoom = 7.6;
+    this.fpvFov = 62;
+    this.setPovMode(this.povMode);
+  }
+
+  public rebuildPlayerRig(
+    characterId: CharacterId,
+    costume: EquippedCostume,
+    weaponId: WeaponId
+  ): void {
+    const pos = this.playerRig.group.position.clone();
+    const rot = this.playerRig.group.rotation.y;
+    this.playerRig.group.remove(this.shieldBubble);
+    this.scene.remove(this.playerRig.group);
+    this.playerRig = buildBlockyCharacter(characterId, costume, weaponId);
+    this.playerRig.group.position.copy(pos);
+    this.playerRig.group.rotation.y = rot;
+    this.playerRig.group.add(this.shieldBubble);
+    this.scene.add(this.playerRig.group);
+  }
+
   public syncAndRender(sim: LevelSimulation, dt: number): void {
     const p = sim.player;
 
     this.playerRig.group.position.set(p.x, p.y, p.z);
     this.playerRig.group.rotation.y = p.facing;
+    this.playerRig.group.visible = this.povMode !== 'first_person';
     animateCharacterRig(this.playerRig, p.animState, p.animTime);
-    this.shieldBubble.visible = p.shieldTimer > 0;
+    this.shieldBubble.visible = p.shieldTimer > 0 && this.povMode !== 'first_person';
     if (p.invulnTimer > 0 && Math.floor(p.invulnTimer * 18) % 2 === 0) {
       this.playerRig.group.scale.setScalar(0.92);
     } else {
@@ -604,6 +679,34 @@ export class MazeRenderer3D {
       }
     }
 
+    // Lightning Arcs (Sihir Petir 3D beams)
+    const activeArcIds = new Set<string>();
+    for (const arc of sim.lightningArcs) {
+      activeArcIds.add(arc.id);
+      let mesh = this.lightningMeshes.get(arc.id);
+      if (!mesh) {
+        const dx = arc.x2 - arc.x1;
+        const dz = arc.z2 - arc.z1;
+        const dist = Math.max(0.2, Math.hypot(dx, dz));
+        const g = new THREE.BoxGeometry(0.1, 0.1, dist);
+        const m = new THREE.MeshBasicMaterial({ color: arc.color });
+        mesh = new THREE.Mesh(g, m);
+        mesh.position.set((arc.x1 + arc.x2) / 2, 0.72, (arc.z1 + arc.z2) / 2);
+        mesh.rotation.y = Math.atan2(dx, dz);
+        this.scene.add(mesh);
+        this.lightningMeshes.set(arc.id, mesh);
+        this.disposableGeos.push(g);
+        this.disposableMats.push(m);
+      }
+      mesh.scale.set(Math.max(0.3, arc.life / arc.maxLife), Math.max(0.3, arc.life / arc.maxLife), 1);
+    }
+    for (const [id, mesh] of this.lightningMeshes.entries()) {
+      if (!activeArcIds.has(id)) {
+        this.scene.remove(mesh);
+        this.lightningMeshes.delete(id);
+      }
+    }
+
     // Particles
     for (let i = 0; i < this.particlePool.length; i++) {
       const pm = this.particlePool[i];
@@ -618,21 +721,56 @@ export class MazeRenderer3D {
       }
     }
 
-    // Smooth Third-Person Follow Camera
-    const targetCamX = p.x;
-    const targetCamY = 6.4 + p.y * 0.4;
-    const targetCamZ = p.z + 6.6;
+    // Multi-POV Camera Controller (1st Person, 3rd Person, Top View + Free Orbit & Zoom + Hit Shake)
+    const shakeMag = p.damageFlashTimer > 0 ? p.damageFlashTimer * 0.28 : 0;
+    const shakeX = shakeMag > 0 ? (Math.random() - 0.5) * shakeMag : 0;
+    const shakeY = shakeMag > 0 ? (Math.random() - 0.5) * shakeMag : 0;
 
-    this.camPos.x = THREE.MathUtils.damp(this.camPos.x, targetCamX, 7.5, dt);
-    this.camPos.y = THREE.MathUtils.damp(this.camPos.y, targetCamY, 7.5, dt);
-    this.camPos.z = THREE.MathUtils.damp(this.camPos.z, targetCamZ, 7.5, dt);
+    if (this.povMode === 'first_person') {
+      const eyeY = p.y + 1.34;
+      const forwardX = -Math.sin(this.camYaw);
+      const forwardZ = -Math.cos(this.camYaw);
+      this.camPos.set(p.x + shakeX, eyeY + shakeY, p.z);
+      this.camLook.set(
+        p.x + forwardX * 4.5,
+        eyeY - Math.sin(this.camPitch) * 3.0,
+        p.z + forwardZ * 4.5
+      );
+      this.camera.position.copy(this.camPos);
+      this.camera.lookAt(this.camLook);
+    } else if (this.povMode === 'top_view') {
+      const topHeight = this.camZoom * 1.55;
+      const targetX = p.x;
+      const targetZ = p.z + 1.4;
+      this.camPos.x = THREE.MathUtils.damp(this.camPos.x, targetX, 9, dt);
+      this.camPos.y = THREE.MathUtils.damp(this.camPos.y, topHeight, 9, dt);
+      this.camPos.z = THREE.MathUtils.damp(this.camPos.z, targetZ, 9, dt);
 
-    this.camLook.x = THREE.MathUtils.damp(this.camLook.x, p.x, 10, dt);
-    this.camLook.y = THREE.MathUtils.damp(this.camLook.y, 0.75 + p.y * 0.3, 10, dt);
-    this.camLook.z = THREE.MathUtils.damp(this.camLook.z, p.z, 10, dt);
+      this.camLook.x = THREE.MathUtils.damp(this.camLook.x, p.x, 12, dt);
+      this.camLook.y = THREE.MathUtils.damp(this.camLook.y, 0.35 + p.y * 0.25, 12, dt);
+      this.camLook.z = THREE.MathUtils.damp(this.camLook.z, p.z, 12, dt);
 
-    this.camera.position.copy(this.camPos);
-    this.camera.lookAt(this.camLook);
+      this.camera.position.set(this.camPos.x + shakeX, this.camPos.y + shakeY, this.camPos.z);
+      this.camera.lookAt(this.camLook);
+    } else {
+      // Third Person Orbit Camera
+      const horizDist = Math.cos(this.camPitch) * this.camZoom;
+      const vertHeight = Math.sin(this.camPitch) * this.camZoom + 1.1;
+      const targetCamX = p.x + Math.sin(this.camYaw) * horizDist;
+      const targetCamY = vertHeight + p.y * 0.45;
+      const targetCamZ = p.z + Math.cos(this.camYaw) * horizDist;
+
+      this.camPos.x = THREE.MathUtils.damp(this.camPos.x, targetCamX, 8.5, dt);
+      this.camPos.y = THREE.MathUtils.damp(this.camPos.y, targetCamY, 8.5, dt);
+      this.camPos.z = THREE.MathUtils.damp(this.camPos.z, targetCamZ, 8.5, dt);
+
+      this.camLook.x = THREE.MathUtils.damp(this.camLook.x, p.x, 11, dt);
+      this.camLook.y = THREE.MathUtils.damp(this.camLook.y, 0.85 + p.y * 0.35, 11, dt);
+      this.camLook.z = THREE.MathUtils.damp(this.camLook.z, p.z, 11, dt);
+
+      this.camera.position.set(this.camPos.x + shakeX, this.camPos.y + shakeY, this.camPos.z);
+      this.camera.lookAt(this.camLook);
+    }
 
     this.renderer.render(this.scene, this.camera);
   }

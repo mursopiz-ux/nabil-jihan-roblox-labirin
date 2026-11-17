@@ -1,6 +1,8 @@
 export type CharacterId = 'nabil' | 'jihan';
 export type GraphicsMode = '2d' | '3d';
 export type GraphicsQuality = 'low' | 'medium' | 'high';
+export type CameraPOV = 'third_person' | 'first_person' | 'top_view';
+export type MagicSpellId = 'fireball' | 'lightning' | 'ice';
 
 export type CostumeCategory =
   | 'baju'
@@ -58,6 +60,20 @@ export interface CostumeItem {
   color: string;
   accentColor?: string;
   style: string;
+  description: string;
+  wingStyle?: 'mini' | 'dragon_fire' | 'dragon_energy';
+  auraColor?: string;
+  unlockHint?: string;
+}
+
+export interface MagicSpellDef {
+  id: MagicSpellId;
+  name: string;
+  shortLabel: string;
+  mpCost: number;
+  cooldown: number;
+  damage: number;
+  color: string;
   description: string;
 }
 
@@ -176,6 +192,10 @@ export interface MonsterEntity {
   phase: 1 | 2 | 3;
   specialTimer: number;
   leapVy: number;
+  burnTimer: number;
+  burnTickTimer: number;
+  freezeTimer: number;
+  shockTimer: number;
   alive: boolean;
   animTime: number;
 }
@@ -183,7 +203,16 @@ export interface MonsterEntity {
 export interface ProjectileEntity {
   id: string;
   fromPlayer: boolean;
-  kind: 'bubble' | 'star' | 'slime_glob' | 'fireball' | 'ice_shard' | 'ghost_orb' | 'dragon_flame';
+  kind:
+    | 'bubble'
+    | 'star'
+    | 'slime_glob'
+    | 'fireball'
+    | 'ice_shard'
+    | 'ghost_orb'
+    | 'dragon_flame'
+    | 'player_fireball'
+    | 'player_ice';
   x: number;
   y: number;
   z: number;
@@ -194,6 +223,17 @@ export interface ProjectileEntity {
   color: string;
   radius: number;
   life: number;
+}
+
+export interface LightningArc {
+  id: string;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  life: number;
+  maxLife: number;
+  color: string;
 }
 
 export interface ShockwaveRing {
@@ -267,6 +307,8 @@ export interface PlayerState {
   facing: number;
   hp: number;
   maxHp: number;
+  mp: number;
+  maxMp: number;
   keysHeld: number;
   grounded: boolean;
   animState: 'idle' | 'walk' | 'run' | 'jump' | 'attack' | 'hit';
@@ -275,6 +317,11 @@ export interface PlayerState {
   attackCooldown: number;
   hitTimer: number;
   invulnTimer: number;
+  timeSinceLastHit: number;
+  regenTickTimer: number;
+  damageFlashTimer: number;
+  koCount: number;
+  magicCooldowns: Record<MagicSpellId, number>;
   speedBoostTimer: number;
   shieldTimer: number;
   magnetTimer: number;
@@ -313,6 +360,7 @@ export interface LevelSimulation {
   monsters: MonsterEntity[];
   items: LevelItemSpawn[];
   projectiles: ProjectileEntity[];
+  lightningArcs: LightningArc[];
   shockwaves: ShockwaveRing[];
   boulders: RollingBoulder[];
   fallingRocks: FallingRock[];
