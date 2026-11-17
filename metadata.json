@@ -1,0 +1,6 @@
+{
+  "name": "Nabil Kayana & Jihan: Maze Adventure",
+  "description": "Offline-first 2D & 3D blocky maze adventure game with 5 worlds, 50 levels, customizable characters, monsters, bosses, and Android touch controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
